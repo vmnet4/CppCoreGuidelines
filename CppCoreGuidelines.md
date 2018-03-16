@@ -1,6 +1,6 @@
 # <a name="main"></a>C++ Core Guidelines
 
-February 26, 2018
+March 9, 2018
 
 
 Editors:
@@ -697,7 +697,7 @@ Or better still just use the type system and replace `Int` with `int32_t`.
     void read(int* p, int n);   // read max n integers into *p
 
     int a[100];
-    read(a, 1000);    // bad
+    read(a, 1000);    // bad, off the end
 
 better
 
@@ -3105,7 +3105,7 @@ To compare, if we passed out all values as return values, we would something lik
     pair<istream&, string> get_string(istream& is);  // not recommended
     {
         string s;
-        cin >> s;
+        is >> s;
         return {is, s};
     }
 
@@ -10514,7 +10514,7 @@ It nicely encapsulates local initialization, including cleaning up scratch varia
 ##### Example, bad
 
     widget x;   // should be const, but:
-    for (auto i = 2; i <= N; ++i) {             // this could be some
+    for (auto i = 2; i <= N; ++i) {          // this could be some
         x += some_obj.do_something_with(i);  // arbitrarily long code
     }                                        // needed to initialize x
     // from here, x should be const, but we can't say so in code in this style
@@ -20159,7 +20159,7 @@ Code says what is done, not what is supposed to be done. Often intent can be sta
 
 ##### Note
 
-If the comment and the code disagrees, both are likely to be wrong.
+If the comment and the code disagree, both are likely to be wrong.
 
 ### <a name="Rl-comments-crisp"></a>NL.3: Keep comments crisp
 
