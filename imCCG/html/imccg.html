@@ -1,5 +1,5 @@
 <h1 id="anamemainaccoreguidelines"><a name="main"></a>C++ Core Guidelines</h1>
-<p>March 9, 2018</p>
+<p>March 26, 2018</p>
 <p>Editors:</p>
 <ul>
 <li><a href="http://www.stroustrup.com">Bjarne Stroustrup</a></li>
@@ -139,7 +139,7 @@ The list of contributors is <a href="#SS-ack">here</a>.</p>
 <a href="#SS-lambdas">when to use</a></li>
 <li>operator:
 <a href="#Ro-conventional">conventional</a> --
-<a href="#Ro-conventional">avoid conversion operators</a> --
+<a href="#Ro-conversion">avoid conversion operators</a> --
 <a href="#Ro-lambda">and lambdas</a></li>
 <li><code>public</code>, <code>private</code>, and <code>protected</code>:
 <a href="#Rc-private">information hiding</a> --
@@ -1289,7 +1289,7 @@ Consider using:</p>
 {
     char buffer[MAX];
     // ...
-    memset(buffer, 0, MAX);
+    memset(buffer, 0, sizeof(buffer));
 }
 </code></pre>
 <p>There was no postcondition stating that the buffer should be cleared and the optimizer eliminated the apparently redundant <code>memset()</code> call:</p>
@@ -1297,7 +1297,7 @@ Consider using:</p>
 {
     char buffer[MAX];
     // ...
-    memset(buffer, 0, MAX);
+    memset(buffer, 0, sizeof(buffer));
     Ensures(buffer[0] == 0);
 }
 </code></pre>
@@ -2535,6 +2535,7 @@ It complicates checking and tool support.</p>
 <p><code>owner&lt;T*&gt;</code> represents ownership, <code>zstring</code> represents a C-style string.</p>
 <p><strong>Also</strong>: Assume that a <code>T*</code> obtained from a smart pointer to <code>T</code> (e.g., <code>unique_ptr&lt;T&gt;</code>) points to a single element.</p>
 <p><strong>See also</strong>: <a href="#S-gsl">Support library</a></p>
+<p><strong>See also</strong>: <a href="#Ri-array">Do not pass an array as a single pointer</a></p>
 <h5 id="enforcement-45">Enforcement</h5>
 <ul>
 <li>(Simple) ((Bounds)) Warn for any arithmetic operation on an expression of pointer type that results in a value of pointer type.</li>
@@ -3315,7 +3316,7 @@ public:
     // ...
 private:
     double magnitude;
-    double unit;    // 1 is meters, 1000 is kilometers, 0.0001 is millimeters, etc.
+    double unit;    // 1 is meters, 1000 is kilometers, 0.001 is millimeters, etc.
 };
 </code></pre>
 <h5 id="note-89">Note</h5>
@@ -3532,7 +3533,19 @@ Named_map nm2 {nm};  // copy construct
 For example, a class with a (pointer, size) pair of member and a destructor that <code>delete</code>s the pointer could probably be converted to a <code>vector</code>.</p>
 <h3 id="anamercfiveac21ifyoudefineordeleteanydefaultoperationdefineordeletethemall"><a name="Rc-five"></a>C.21: If you define or <code>=delete</code> any default operation, define or <code>=delete</code> them all</h3>
 <h5 id="reason-79">Reason</h5>
-<p>The semantics of the special functions are closely related, so if one needs to be non-default, the odds are that others need modification too.</p>
+<p>The <em>special member functions</em> are the default constructor, copy constructor,
+copy assignment operator, move constructor, move assignment operator, and
+destructor.</p>
+<p>The semantics of the special functions are closely related, so if one needs to be declared, the odds are that others need consideration too.</p>
+<p>Declaring any special member function except a default constructor,
+even as <code>=default</code> or <code>=delete</code>, will suppress the implicit declaration
+of a move constructor and move assignment operator.
+Declaring a move constructor or move assignment operator, even as
+<code>=default</code> or <code>=delete</code>, will cause an implicitly generated copy constructor
+or implicitly generated copy assignment operator to be defined as deleted.
+So as soon as any of the special functions is declared, the others should
+all be declared to avoid unwanted effects like turning all potential moves
+into more expensive copies, or making a class move-only.</p>
 <h5 id="examplebad-24">Example, bad</h5>
 <pre><code>struct M2 {   // bad: incomplete set of default operations
 public:
@@ -3558,6 +3571,35 @@ void use()
 <h5 id="note-96">Note</h5>
 <p>If you want a default implementation of a default operation (while defining another), write <code>=default</code> to show you're doing so intentionally for that function.
 If you don't want a default operation, suppress it with <code>=delete</code>.</p>
+<h5 id="examplegood-5">Example, good</h5>
+<p>When a destructor needs to be declared just to make it <code>virtual</code>, it can be
+defined as defaulted. To avoid suppressing the implicit move operations
+they must also be declared, and then to avoid the class becoming move-only
+(and not copyable) the copy operations must be declared:</p>
+<pre><code>class AbstractBase {
+public:
+  virtual ~AbstractBase() = default;
+  AbstractBase(const AbstractBase&amp;) = default;
+  AbstractBase&amp; operator=(const AbstractBase&amp;) = default;
+  AbstractBase(AbstractBase&amp;&amp;) = default;
+  AbstractBase&amp; operator=(AbstractBase&amp;&amp;) = default;
+};
+</code></pre>
+<p>Alternatively to prevent slicing as per <a href="#Rc-copy-virtual">C.67</a>,
+the copy and move operations can all be deleted:</p>
+<pre><code>class ClonableBase {
+public:
+  virtual unique_ptr&lt;ClonableBase&gt; clone() const;
+  virtual ~ClonableBase() = default;
+  ClonableBase(const ClonableBase&amp;) = delete;
+  ClonableBase&amp; operator=(const ClonableBase&amp;) = delete;
+  ClonableBase(ClonableBase&amp;&amp;) = delete;
+  ClonableBase&amp; operator=(ClonableBase&amp;&amp;) = delete;
+};
+</code></pre>
+<p>Defining only the move operations or only the copy operations would have the
+same effect here, but stating the intent explicitly for each special member
+makes it more obvious to the reader.</p>
 <h5 id="note-97">Note</h5>
 <p>Compilers enforce much of this rule and ideally warn about any violation.</p>
 <h5 id="note-98">Note</h5>
@@ -4202,6 +4244,8 @@ public:
 Complex z = 10.7;   // unsurprising conversion
 </code></pre>
 <p><strong>See also</strong>: <a href="#Ro-conversion">Discussion of implicit conversions</a></p>
+<h5 id="note-121">Note</h5>
+<p>Copy and move constructors should not be made <code>explicit</code> because they do not perform conversions. Explicit copy/move constructors make passing and returning by value difficult.</p>
 <h5 id="enforcement-89">Enforcement</h5>
 <p>(Simple) Single-argument constructors should be declared <code>explicit</code>. Good single argument non-<code>explicit</code> constructors are rare in most code based. Warn for all that are not on a "positive list".</p>
 <h3 id="anamercorderac47defineandinitializemembervariablesintheorderofmemberdeclaration"><a name="Rc-order"></a>C.47: Define and initialize member variables in the order of member declaration</h3>
@@ -4266,7 +4310,7 @@ public:
 <h3 id="anamercinitializeac49preferinitializationtoassignmentinconstructors"><a name="Rc-initialize"></a>C.49: Prefer initialization to assignment in constructors</h3>
 <h5 id="reason-97">Reason</h5>
 <p>An initialization explicitly states that initialization, rather than assignment, is done and can be more elegant and efficient. Prevents "use before set" errors.</p>
-<h5 id="examplegood-5">Example, good</h5>
+<h5 id="examplegood-6">Example, good</h5>
 <pre><code>class A {   // Good
     string s1;
 public:
@@ -4292,7 +4336,7 @@ public:
 <h3 id="anamercfactoryac50useafactoryfunctionifyouneedvirtualbehaviorduringinitialization"><a name="Rc-factory"></a>C.50: Use a factory function if you need "virtual behavior" during initialization</h3>
 <h5 id="reason-98">Reason</h5>
 <p>If the state of a base class object must depend on the state of a derived part of the object, we need to use a virtual function (or equivalent) while minimizing the window of opportunity to misuse an imperfectly constructed object.</p>
-<h5 id="note-121">Note</h5>
+<h5 id="note-122">Note</h5>
 <p>The return type of the factory should normally be <code>unique_ptr</code> by default; if some uses are shared, the caller can <code>move</code> the <code>unique_ptr</code> into a <code>shared_ptr</code>. However, if the factory author knows that all uses of the returned object will be shared uses, return <code>shared_ptr</code> and use <code>make_shared</code> in the body to save an allocation.</p>
 <h5 id="examplebad-36">Example, bad</h5>
 <pre><code>class B {
@@ -4339,7 +4383,7 @@ shared_ptr&lt;D&gt; p = D::Create&lt;D&gt;();  // creating a D object
 </code></pre>
 <p>By making the constructor <code>protected</code> we avoid an incompletely constructed object escaping into the wild.
 By providing the factory function <code>Create()</code>, we make construction (on the free store) convenient.</p>
-<h5 id="note-122">Note</h5>
+<h5 id="note-123">Note</h5>
 <p>Conventional factory functions allocate on the free store, rather than on the stack or in an enclosing object.</p>
 <p><strong>See also</strong>: <a href="#Sd-factory">Discussion</a></p>
 <h3 id="anamercdelegatingac51usedelegatingconstructorstorepresentcommonactionsforallconstructorsofaclass"><a name="Rc-delegating"></a>C.51: Use delegating constructors to represent common actions for all constructors of a class</h3>
@@ -4433,7 +4477,7 @@ Foo f();
 a = b;    // assign lvalue: copy
 a = f();  // assign rvalue: potentially move
 </code></pre>
-<h5 id="note-123">Note</h5>
+<h5 id="note-124">Note</h5>
 <p>The <code>swap</code> implementation technique offers the <a href="#Abrahams01">strong guarantee</a>.</p>
 <h5 id="example-91">Example</h5>
 <p>But what if you can get significantly better performance by not making a temporary copy? Consider a simple <code>Vector</code> intended for a domain where assignment of large, equal-sized <code>Vector</code>s is common. In this case, the copy of elements implied by the <code>swap</code> implementation technique could cause an order of magnitude increase in cost:</p>
@@ -4528,7 +4572,7 @@ if (x != y) throw Bad{};
 x.modify();
 if (x != y) throw Bad{};  // assume pointer semantics
 </code></pre>
-<h5 id="note-124">Note</h5>
+<h5 id="note-125">Note</h5>
 <p>Prefer copy semantics unless you are building a "smart pointer". Value semantics is the simplest to reason about and what the standard-library facilities expect.</p>
 <h5 id="enforcement-95">Enforcement</h5>
 <p>(Not enforceable)</p>
@@ -4541,7 +4585,7 @@ if (x != y) throw Bad{};  // assume pointer semantics
 v = v;
 // the value of v is still {3, 1, 4, 1, 5, 9}
 </code></pre>
-<h5 id="note-125">Note</h5>
+<h5 id="note-126">Note</h5>
 <p>The default assignment generated from members that handle self-assignment correctly handles self-assignment.</p>
 <pre><code>struct Bar {
     vector&lt;pair&lt;int, int&gt;&gt; v;
@@ -4553,7 +4597,7 @@ Bar b;
 // ...
 b = b;   // correct and efficient
 </code></pre>
-<h5 id="note-126">Note</h5>
+<h5 id="note-127">Note</h5>
 <p>You can handle self-assignment by explicitly testing for self-assignment, but often it is faster and more elegant to cope without such a test (e.g., <a href="#Rc-swap">using <code>swap</code></a>).</p>
 <pre><code>class Foo {
     string s;
@@ -4630,14 +4674,14 @@ void use()
     x = X{};   // OK
 } // OK: x can be destroyed
 </code></pre>
-<h5 id="note-127">Note</h5>
+<h5 id="note-128">Note</h5>
 <p>Ideally, that moved-from should be the default value of the type.
 Ensure that unless there is an exceptionally good reason not to.
 However, not all types have a default value and for some types establishing the default value can be expensive.
 The standard requires only that the moved-from object can be destroyed.
 Often, we can easily and cheaply do better: The standard library assumes that it is possible to assign to a moved-from object.
 Always leave the moved-from object in some (necessarily specified) valid state.</p>
-<h5 id="note-128">Note</h5>
+<h5 id="note-129">Note</h5>
 <p>Unless there is an exceptionally strong reason not to, make <code>x = std::move(y); y = z;</code> work with the conventional semantics.</p>
 <h5 id="enforcement-98">Enforcement</h5>
 <p>(Not enforceable) Look for assignments to members in the move operation. If there is a default constructor, compare those assignments to the initializations in the default constructor.</p>
@@ -4662,9 +4706,9 @@ Foo&amp; Foo::operator=(Foo&amp;&amp; a) noexcept  // OK, but there is a cost
 }
 </code></pre>
 <p>The one-in-a-million argument against <code>if (this == &amp;a) return *this;</code> tests from the discussion of <a href="#Rc-copy-self">self-assignment</a> is even more relevant for self-move.</p>
-<h5 id="note-129">Note</h5>
-<p>There is no known general way of avoiding a <code>if (this == &amp;a) return *this;</code> test for a move assignment and still get a correct answer (i.e., after <code>x = x</code> the value of <code>x</code> is unchanged).</p>
 <h5 id="note-130">Note</h5>
+<p>There is no known general way of avoiding a <code>if (this == &amp;a) return *this;</code> test for a move assignment and still get a correct answer (i.e., after <code>x = x</code> the value of <code>x</code> is unchanged).</p>
+<h5 id="note-131">Note</h5>
 <p>The ISO standard guarantees only a "valid but unspecified" state for the standard-library containers. Apparently this has not been a problem in about 10 years of experimental and production use. Please contact the editors if you find a counter example. The rule here is more caution and insists on complete safety.</p>
 <h5 id="example-97">Example</h5>
 <p>Here is a way to move a pointer without a test (imagine it as code in the implementation a move assignment):</p>
@@ -4748,7 +4792,7 @@ class D : public B {
 auto d = make_unique&lt;D&gt;();
 auto b = d.clone(); // ok, deep clone
 </code></pre>
-<h5 id="note-131">Note</h5>
+<h5 id="note-132">Note</h5>
 <p>It's good to return a smart pointer, but unlike with raw pointers the return type cannot be covariant (for example, <code>D::clone</code> can't return a <code>unique_ptr&lt;D&gt;</code>. Don't let this tempt you into returning an owning raw pointer; this is a minor drawback compared to the major robustness benefit delivered by the owning smart pointer.</p>
 <h5 id="exception-21">Exception</h5>
 <p>If you need covariant return types, return an <code>owner&lt;derived*&gt;</code>. See <a href="#Rh-copy">C.130</a>.</p>
@@ -4870,7 +4914,7 @@ public:
 </code></pre>
 <p>Note that calling a specific explicitly qualified function is not a virtual call even if the function is <code>virtual</code>.</p>
 <p><strong>See also</strong> <a href="#Rc-factory">factory functions</a> for how to achieve the effect of a call to a derived class function without risking undefined behavior.</p>
-<h5 id="note-132">Note</h5>
+<h5 id="note-133">Note</h5>
 <p>There is nothing inherently wrong with calling virtual functions from constructors and destructors.
 The semantics of such calls is type safe.
 However, experience shows that such calls are rarely needed, easily confuse maintainers, and become a source of errors when used by novices.</p>
@@ -4881,7 +4925,7 @@ However, experience shows that such calls are rarely needed, easily confuse main
 <h3 id="anamercswapac83forvalueliketypesconsiderprovidinganoexceptswapfunction"><a name="Rc-swap"></a>C.83: For value-like types, consider providing a <code>noexcept</code> swap function</h3>
 <h5 id="reason-112">Reason</h5>
 <p>A <code>swap</code> can be handy for implementing a number of idioms, from smoothly moving objects around to implementing assignment easily to providing a guaranteed commit function that enables strongly error-safe calling code. Consider using swap to implement copy assignment in terms of copy construction. See also <a href="#Re-never-fail">destructors, deallocation, and swap must never fail</a>.</p>
-<h5 id="examplegood-6">Example, good</h5>
+<h5 id="examplegood-7">Example, good</h5>
 <pre><code>class Foo {
     // ...
 public:
@@ -4951,10 +4995,10 @@ bool operator==(const X&amp; a, const X&amp; b) noexcept {
 };
 </code></pre>
 <p><code>B</code>'s comparison accepts conversions for its second operand, but not its first.</p>
-<h5 id="note-133">Note</h5>
+<h5 id="note-134">Note</h5>
 <p>If a class has a failure state, like <code>double</code>'s <code>NaN</code>, there is a temptation to make a comparison against the failure state throw.
 The alternative is to make two failure states compare equal and any valid state compare false against the failure state.</p>
-<h4 id="note-134">Note</h4>
+<h4 id="note-135">Note</h4>
 <p>This rule applies to all the usual comparison operators: <code>!=</code>, <code>&lt;</code>, <code>&lt;=</code>, <code>&gt;</code>, and <code>&gt;=</code>.</p>
 <h5 id="enforcement-108">Enforcement</h5>
 <ul>
@@ -4995,7 +5039,7 @@ B&amp; b2 = d2;
 b2 == d;   // compares name and number, ignores d2's and d's character
 </code></pre>
 <p>Of course there are ways of making <code>==</code> work in a hierarchy, but the naive approaches do not scale</p>
-<h4 id="note-135">Note</h4>
+<h4 id="note-136">Note</h4>
 <p>This rule applies to all the usual comparison operators: <code>!=</code>, <code>&lt;</code>, <code>&lt;=</code>, <code>&gt;</code>, and <code>&gt;=</code>.</p>
 <h5 id="enforcement-109">Enforcement</h5>
 <ul>
@@ -5256,7 +5300,7 @@ void use()
     // ...
 } // undefined behavior. May call B::~B only and leak the string
 </code></pre>
-<h5 id="note-136">Note</h5>
+<h5 id="note-137">Note</h5>
 <p>There are people who don't follow this rule because they plan to use a class only through a <code>shared_ptr</code>: <code>std::shared_ptr&lt;B&gt; p = std::make_shared&lt;D&gt;(args);</code> Here, the shared pointer will take care of deletion, so no leak will occur from an inappropriate <code>delete</code> of the base. People who do this consistently can get a false positive, but the rule is important -- what if one was allocated using <code>make_unique</code>? It's not safe unless the author of <code>B</code> ensures that it can never be misused, such as by making all constructors private and providing a factory function to enforce the allocation with <code>make_shared</code>.</p>
 <h5 id="enforcement-115">Enforcement</h5>
 <ul>
@@ -5284,7 +5328,7 @@ struct D : B {
     // ...
 };
 </code></pre>
-<h5 id="examplegood-7">Example, good</h5>
+<h5 id="examplegood-8">Example, good</h5>
 <pre><code>struct Better : B {
     void f1(int) override;        // error (caught): D::f1() hides B::f1()
     void f2(int) const override;
@@ -5303,7 +5347,7 @@ struct D : B {
 <p>Implementation details in an interface makes the interface brittle;
 that is, makes its users vulnerable to having to recompile after changes in the implementation.
 Data in a base class increases the complexity of implementing the base and can lead to replication of code.</p>
-<h5 id="note-137">Note</h5>
+<h5 id="note-138">Note</h5>
 <p>Definition:</p>
 <ul>
 <li>interface inheritance is the use of inheritance to separate users from implementations,
@@ -5337,7 +5381,7 @@ public:
     virtual void redraw();
 
     // ...
-public:
+private:
     Point cent;
     Color col;
 };
@@ -5489,9 +5533,9 @@ int user()
 </code></pre>
 <p>This can be useful when the implementation class has members that are not offered in the abstract interface
 or if direct use of a member offers optimization opportunities (e.g., if an implementation member function is <code>final</code>)</p>
-<h5 id="note-138">Note</h5>
-<p>Another (related) technique for separating interface and implementation is <a href="#Ri-pimpl">Pimpl</a>.</p>
 <h5 id="note-139">Note</h5>
+<p>Another (related) technique for separating interface and implementation is <a href="#Ri-pimpl">Pimpl</a>.</p>
+<h5 id="note-140">Note</h5>
 <p>There is often a choice between offering common functionality as (implemented) base class functions and free-standing functions
 (in an implementation namespace).
 Base classes gives a shorter notation and easier access to shared data (in the base)
@@ -5550,7 +5594,7 @@ public:
 };
 </code></pre>
 <p>Note that we can put default initializers on member variables: <a href="#Rc-initialize">C.49: Prefer initialization to assignment in constructors</a>.</p>
-<h5 id="note-140">Note</h5>
+<h5 id="note-141">Note</h5>
 <p>The key to this rule is whether the semantics of the getter/setter are trivial. While it is not a complete definition of "trivial", consider whether there would be any difference beyond syntax if the getter/setter was a public data member instead. Examples of non-trivial semantics would be: maintaining a class invariant or converting between an internal type and an interface type.</p>
 <h5 id="enforcement-119">Enforcement</h5>
 <p>Flag multiple <code>get</code> and <code>set</code> member functions that simply access a member without additional semantics.</p>
@@ -5600,12 +5644,12 @@ The set of classes that can touch that data is open: anyone can derive a new cla
 Often, it is not possible to examine the complete set of classes, so any change to the representation of the class becomes infeasible.
 There is no enforced invariant for the protected data; it is much like a set of global variables.
 The protected data has de facto become global to a large body of code.</p>
-<h5 id="note-141">Note</h5>
+<h5 id="note-142">Note</h5>
 <p>Protected data often looks tempting to enable arbitrary improvements through derivation.
 Often, what you get is unprincipled changes and errors.
 <a href="#Rc-private">Prefer <code>private</code> data</a> with a well-specified and enforced invariant.
 Alternative, and often better, <a href="#Rh-abstract">keep data out of any class used as an interface</a>.</p>
-<h5 id="note-142">Note</h5>
+<h5 id="note-143">Note</h5>
 <p>Protected member function can be just fine.</p>
 <h5 id="enforcement-121">Enforcement</h5>
 <p>Flag classes with <code>protected</code> data.</p>
@@ -5644,10 +5688,10 @@ Especially to break apart monolithic interfaces into "aspects" of behavior suppo
 </code></pre>
 <p><code>istream</code> provides the interface to input operations; <code>ostream</code> provides the interface to output operations.
 <code>iostream</code> provides the union of the <code>istream</code> and <code>ostream</code> interfaces and the synchronization needed to allow both on a single stream.</p>
-<h5 id="note-143">Note</h5>
+<h5 id="note-144">Note</h5>
 <p>This is a very common use of inheritance because the need for multiple different interfaces to an implementation is common
 and such interfaces are often not easily or naturally organized into a single-rooted hierarchy.</p>
-<h5 id="note-144">Note</h5>
+<h5 id="note-145">Note</h5>
 <p>Such interfaces are typically abstract classes.</p>
 <h5 id="enforcement-123">Enforcement</h5>
 <p>???</p>
@@ -5662,7 +5706,7 @@ If the operations are virtual the use of inheritance is necessary, if not using 
 </code></pre>
 <p><code>istream</code> provides the interface to input operations (and some data); <code>ostream</code> provides the interface to output operations (and some data).
 <code>iostream</code> provides the union of the <code>istream</code> and <code>ostream</code> interfaces and the synchronization needed to allow both on a single stream.</p>
-<h5 id="note-145">Note</h5>
+<h5 id="note-146">Note</h5>
 <p>This a relatively rare use because implementation can often be organized into a single-rooted hierarchy.</p>
 <h5 id="example-113">Example</h5>
 <p>Sometimes, an "implementation attribute" is more like a "mixin" that determine the behavior of an implementation and inject
@@ -5703,12 +5747,12 @@ class Derive2 : public Interface, virtual protected Utility {
 };
 </code></pre>
 <p>Factoring out <code>Utility</code> makes sense if many derived classes share significant "implementation details."</p>
-<h5 id="note-146">Note</h5>
+<h5 id="note-147">Note</h5>
 <p>Obviously, the example is too "theoretical", but it is hard to find a <em>small</em> realistic example.
 <code>Interface</code> is the root of an <a href="#Rh-abstract">interface hierarchy</a>
 and <code>Utility</code> is the root of an <a href="#Rh-kind">implementation hierarchy</a>.
 Here is <a href="https://www.quora.com/What-are-the-uses-and-advantages-of-virtual-base-class-in-C%2B%2B/answer/Lance-Diduck">a slightly more realistic example</a> with an explanation.</p>
-<h5 id="note-147">Note</h5>
+<h5 id="note-148">Note</h5>
 <p>Often, linearization of a hierarchy is a better solution.</p>
 <h5 id="enforcement-125">Enforcement</h5>
 <p>Flag mixed interface and implementation hierarchies.</p>
@@ -5733,14 +5777,14 @@ int main()
     std::cout &lt;&lt; d.f(2.3) &lt;&lt; '\n'; // prints "f(int): 3"
 }
 </code></pre>
-<h5 id="examplegood-8">Example, good</h5>
+<h5 id="examplegood-9">Example, good</h5>
 <pre><code>class D: public B {
 public:
     int f(int i) override { std::cout &lt;&lt; "f(int): "; return i + 1; }
     using B::f; // exposes f(double)
 };
 </code></pre>
-<h5 id="note-148">Note</h5>
+<h5 id="note-149">Note</h5>
 <p>This issue affects both virtual and nonvirtual member functions</p>
 <p>For variadic bases, C++17 introduced a variadic form of the using-declaration,</p>
 <pre><code>template &lt;class... Ts&gt;
@@ -5761,14 +5805,14 @@ class My_widget final : public Widget { /* ... */ };
 
 class My_improved_widget : public My_widget { /* ... */ };  // error: can't do that
 </code></pre>
-<h5 id="note-149">Note</h5>
+<h5 id="note-150">Note</h5>
 <p>Not every class is meant to be a base class.
 Most standard-library classes are examples of that (e.g., <code>std::vector</code> and <code>std::string</code> are not designed to be derived from).
 This rule is about using <code>final</code> on classes with virtual functions meant to be interfaces for a class hierarchy.</p>
-<h5 id="note-150">Note</h5>
+<h5 id="note-151">Note</h5>
 <p>Capping an individual virtual function with <code>final</code> is error-prone as <code>final</code> can easily be overlooked when defining/overriding a set of functions.
 Fortunately, the compiler catches such mistakes: You cannot re-declare/re-open a <code>final</code> member in a derived class.</p>
-<h5 id="note-151">Note</h5>
+<h5 id="note-152">Note</h5>
 <p>Claims of performance improvements from <code>final</code> should be substantiated.
 Too often, such claims are based on conjecture or experience with other languages.</p>
 <p>There are examples where <code>final</code> can be important for both logical and performance reasons.
@@ -5881,12 +5925,12 @@ void f()
     user3(&amp;b);  // OK *if* the programmer got the some_condition check right
 }
 </code></pre>
-<h5 id="note-152">Note</h5>
+<h5 id="note-153">Note</h5>
 <p>Like other casts, <code>dynamic_cast</code> is overused.
 <a href="#Rh-use-virtual">Prefer virtual functions to casting</a>.
 Prefer <a href="#???">static polymorphism</a> to hierarchy navigation where it is possible (no run-time resolution necessary)
 and reasonably convenient.</p>
-<h5 id="note-153">Note</h5>
+<h5 id="note-154">Note</h5>
 <p>Some people use <code>dynamic_cast</code> where a <code>typeid</code> would have been more appropriate;
 <code>dynamic_cast</code> is a general "is kind of" operation for discovering the best interface to an object,
 whereas <code>typeid</code> is a "give me the exact type of this object" operation to discover the actual type of an object.
@@ -6113,7 +6157,7 @@ public:
 <h5 id="examplebad-57">Example, bad</h5>
 <pre><code>X operator+(X a, X b) { return a.v - b.v; }   // bad: makes + subtract
 </code></pre>
-<h5 id="note-154">Note</h5>
+<h5 id="note-155">Note</h5>
 <p>Nonmember operators should be either friends or defined in <a href="#Ro-namespace">the same namespace as their operands</a>.
 <a href="#Ro-symmetric">Binary operators should treat their operands equivalently</a>.</p>
 <h5 id="enforcement-138">Enforcement</h5>
@@ -6158,14 +6202,14 @@ void open(const char* name, const char* mode ="r");   // open file
 </code></pre>
 <p>The two operations are still fundamentally different (and unrelated) but the names have been reduced to their (common) minimum, opening opportunities for confusion.
 Fortunately, the type system will catch many such mistakes.</p>
-<h5 id="note-155">Note</h5>
+<h5 id="note-156">Note</h5>
 <p>Be particularly careful about common and popular names, such as <code>open</code>, <code>move</code>, <code>+</code>, and <code>==</code>.</p>
 <h5 id="enforcement-141">Enforcement</h5>
 <p>???</p>
 <h3 id="anameroconversionac164avoidconversionoperators"><a name="Ro-conversion"></a>C.164: Avoid conversion operators</h3>
 <h5 id="reason-149">Reason</h5>
 <p>Implicit conversions can be essential (e.g., <code>double</code> to <code>int</code>) but often cause surprises (e.g., <code>String</code> to C-style string).</p>
-<h5 id="note-156">Note</h5>
+<h5 id="note-157">Note</h5>
 <p>Prefer explicitly named conversions until a serious need is demonstrated.
 By "serious need" we mean a reason that is fundamental in the application domain (such as an integer to complex number conversion)
 and frequently needed. Do not introduce implicit conversions (through conversion operators or non-<code>explicit</code> constructors)
@@ -6249,7 +6293,7 @@ class X {
     // ...
 };
 </code></pre>
-<h5 id="note-157">Note</h5>
+<h5 id="note-158">Note</h5>
 <p>If you "mess with" operator <code>&amp;</code> be sure that its definition has matching meanings for <code>-&gt;</code>, <code>[]</code>, <code>*</code>, and <code>.</code> on the result type.
 Note that operator <code>.</code> currently cannot be overloaded so a perfect system is impossible.
 We hope to remedy that: <a href="http://www.open-std.org/jtc1/sc22/wg21/docs/papers/2015/n4477.pdf">http://www.open-std.org/jtc1/sc22/wg21/docs/papers/2015/n4477.pdf</a>.
@@ -6275,7 +6319,7 @@ std::ostream&amp; operator&lt;&lt;(std::ostream&amp; os, const my_class&amp; c) 
 // ...
 cout &lt;&lt; "var = " &lt;&lt; var &lt;&lt; '\n';
 </code></pre>
-<h5 id="note-158">Note</h5>
+<h5 id="note-159">Note</h5>
 <p>There are strong and vigorous conventions for the meaning most operators, such as</p>
 <ul>
 <li>comparisons (<code>==</code>, <code>!=</code>, <code>&lt;</code>, <code>&lt;=</code>, <code>&gt;</code>, and <code>&gt;=</code>),</li>
@@ -6326,7 +6370,7 @@ namespace M {
 <p>Here, the meaning of <code>!s</code> differs in <code>N</code> and <code>M</code>.
 This can be most confusing.
 Remove the definition of <code>namespace M</code> and the confusion is replaced by an opportunity to make the mistake.</p>
-<h5 id="note-159">Note</h5>
+<h5 id="note-160">Note</h5>
 <p>If a binary operator is defined for two types that are defined in different namespaces, you cannot follow this rule.
 For example:</p>
 <pre><code>Vec::Vector operator*(const Vec::Vector&amp;, const Mat::Matrix&amp;);
@@ -6580,7 +6624,7 @@ Type punning using a <code>union</code> is a source of errors.</p>
 </code></pre>
 <p>Accessing the result of an <code>reinterpret_cast</code> to a different type from the objects declared type is defined behavior (even though <code>reinterpret_cast</code> is discouraged),
 but at least we can see that something tricky is going on.</p>
-<h5 id="note-160">Note</h5>
+<h5 id="note-161">Note</h5>
 <p>Unfortunately, <code>union</code>s are commonly used for type punning.
 We don't consider "sometimes, it works as expected" a strong argument.</p>
 <p>C++17 introduced a distinct type <code>std::byte</code> to facilitate operations on raw object representation.  Use that type instead of <code>unsigned char</code> or <code>char</code> for these operations.</p>
@@ -6634,7 +6678,7 @@ Web_color webby = Web_color::blue;
 <h5 id="example-138">Example</h5>
 <pre><code>enum class Web_color { red = 0xFF0000, green = 0x00FF00, blue = 0x0000FF };
 </code></pre>
-<h5 id="note-161">Note</h5>
+<h5 id="note-162">Note</h5>
 <p>Switching on an enumeration is common and the compiler can warn against unusual patterns of case labels. For example:</p>
 <pre><code>enum class Product_info { red = 0, purple = 1, blue = 2 };
 
@@ -6746,7 +6790,7 @@ enum class Web_color : int { red   = 0xFF0000,
                              green = 0x00FF00,
                              blue  = 0x0000FF };  // underlying type is redundant
 </code></pre>
-<h5 id="note-162">Note</h5>
+<h5 id="note-163">Note</h5>
 <p>Specifying the underlying type is necessary in forward declarations of enumerations:</p>
 <pre><code>enum Flags : char;
 
@@ -6863,7 +6907,7 @@ public:
     Port&amp; operator=(const Port&amp;) = delete;
 };
 </code></pre>
-<h5 id="note-163">Note</h5>
+<h5 id="note-164">Note</h5>
 <p>Where a resource is "ill-behaved" in that it isn't represented as a class with a destructor, wrap it in a class or use <a href="#Re-finally"><code>finally</code></a></p>
 <p><strong>See also</strong>: <a href="#Rr-raii">RAII</a></p>
 <h3 id="anamerruseptrar2ininterfacesuserawpointerstodenoteindividualobjectsonly"><a name="Rr-use-ptr"></a>R.2: In interfaces, use raw pointers to denote individual objects (only)</h3>
@@ -6889,7 +6933,7 @@ Use a <code>span</code> instead.</p>
 <h5 id="exception-27">Exception</h5>
 <p>C-style strings are passed as single pointers to a zero-terminated sequence of characters.
 Use <code>zstring</code> rather than <code>char*</code> to indicate that you rely on that convention.</p>
-<h5 id="note-164">Note</h5>
+<h5 id="note-165">Note</h5>
 <p>Many current uses of pointers to a single element could be references.
 However, where <code>nullptr</code> is a possible value, a reference may not be an reasonable alternative.</p>
 <h5 id="enforcement-160">Enforcement</h5>
@@ -6944,7 +6988,7 @@ For example, common <code>vector</code> implementations have one owning pointer 
 Many ABIs (and essentially all interfaces to C code) use <code>T*</code>s, some of them owning.
 Some interfaces cannot be simply annotated with <code>owner</code> because they need to remain compilable as C
 (although this would be a rare good use for a macro, that expands to <code>owner</code> in C++ mode only).</p>
-<h5 id="note-165">Note</h5>
+<h5 id="note-166">Note</h5>
 <p><code>owner&lt;T*&gt;</code> has no default semantics beyond <code>T*</code>. It can be used without changing any code using it and without affecting ABIs.
 It is simply a indicator to programmers and analysis tools.
 For example, if an <code>owner&lt;T*&gt;</code> is a member of a class, that class better have a destructor that <code>delete</code>s it.</p>
@@ -6972,9 +7016,9 @@ void caller(int n)
     return g;
 }
 </code></pre>
-<h5 id="note-166">Note</h5>
-<p>This rule applies to factory functions.</p>
 <h5 id="note-167">Note</h5>
+<p>This rule applies to factory functions.</p>
+<h5 id="note-168">Note</h5>
 <p>If pointer semantics are required (e.g., because the return type needs to refer to a base class of a class hierarchy (an interface)), return a "smart pointer."</p>
 <h5 id="enforcement-161">Enforcement</h5>
 <ul>
@@ -7081,7 +7125,7 @@ In such cases, consider the <code>nothrow</code> versions of <code>new</code>.</
 <h5 id="reason-174">Reason</h5>
 <p>The pointer returned by <code>new</code> should belong to a resource handle (that can call <code>delete</code>).
 If the pointer returned by <code>new</code> is assigned to a plain/naked pointer, the object can be leaked.</p>
-<h5 id="note-168">Note</h5>
+<h5 id="note-169">Note</h5>
 <p>In a large program, a naked <code>delete</code> (that is a <code>delete</code> in application code, rather than part of code devoted to resource management)
 is a likely bug: if you have N <code>delete</code>s, how can you be certain that you don't need N+1 or N-1?
 The bug may be latent: it may emerge only during maintenance.
@@ -7161,7 +7205,7 @@ fun(sp1, new Widget(c, d));
     // ...
 };
 </code></pre>
-<h5 id="note-169">Note</h5>
+<h5 id="note-170">Note</h5>
 <p>If you want memory that cannot be deallocated, <code>=delete</code> the deallocation operation.
 Don't leave it undeclared.</p>
 <h5 id="enforcement-170">Enforcement</h5>
@@ -7220,7 +7264,7 @@ auto p = make_shared&lt;X&gt;(2);    // good
 <h3 id="anamerrmake_uniquear23usemake_uniquetomakeunique_ptrs"><a name="Rr-make_unique"></a>R.23: Use <code>make_unique()</code> to make <code>unique_ptr</code>s</h3>
 <h5 id="reason-182">Reason</h5>
 <p>For convenience and consistency with <code>shared_ptr</code>.</p>
-<h5 id="note-170">Note</h5>
+<h5 id="note-171">Note</h5>
 <p><code>make_unique()</code> is C++14, but widely available (as well as simple to write).</p>
 <h5 id="enforcement-174">Enforcement</h5>
 <p>(Simple) Warn if a <code>unique_ptr</code> is constructed from the result of <code>new</code> rather than <code>make_unique</code>.</p>
@@ -7259,7 +7303,7 @@ private:
   std::weak_ptr&lt;foo&gt; back_reference_;
 };
 </code></pre>
-<h5 id="note-171">Note</h5>
+<h5 id="note-172">Note</h5>
 <p>??? (HS: A lot of people say "to break cycles", while I think "temporary shared ownership" is more to the point.)
 ???(BS: breaking cycles is what you must do; temporarily sharing ownership is how you do it.
 You could "temporarily share ownership" simply by using another <code>shared_ptr</code>.)</p>
@@ -7286,7 +7330,7 @@ f(my_widget);
 widget stack_widget;
 f(stack_widget); // error
 </code></pre>
-<h5 id="examplegood-9">Example, good</h5>
+<h5 id="examplegood-10">Example, good</h5>
 <pre><code>// callee
 void f(widget&amp; w)
 {
@@ -7356,7 +7400,7 @@ void uses(widget*);            // just uses the widget
 <h3 id="anamerrreseatar33takeaunique_ptrwidgetparametertoexpressthatafunctionreseatsthewidget"><a name="Rr-reseat"></a>R.33: Take a <code>unique_ptr&lt;widget&gt;&amp;</code> parameter to express that a function reseats the<code>widget</code></h3>
 <h5 id="reason-187">Reason</h5>
 <p>Using <code>unique_ptr</code> in this way both documents and enforces the function call's reseating semantics.</p>
-<h5 id="note-172">Note</h5>
+<h5 id="note-173">Note</h5>
 <p>"reseat" means "making a pointer or a smart pointer refer to a different object."</p>
 <h5 id="example-160">Example</h5>
 <pre><code>void reseat(unique_ptr&lt;widget&gt;&amp;); // "will" or "might" reseat pointer
@@ -7372,7 +7416,7 @@ void uses(widget*);            // just uses the widget
 <h3 id="anamerrsharedptrparamownerar34takeashared_ptrwidgetparametertoexpressthatafunctionispartowner"><a name="Rr-sharedptrparam-owner"></a>R.34: Take a <code>shared_ptr&lt;widget&gt;</code> parameter to express that a function is part owner</h3>
 <h5 id="reason-188">Reason</h5>
 <p>This makes the function's ownership sharing explicit.</p>
-<h5 id="examplegood-10">Example, good</h5>
+<h5 id="examplegood-11">Example, good</h5>
 <pre><code>void share(shared_ptr&lt;widget&gt;);            // share -- "will" retain refcount
 
 void may_share(const shared_ptr&lt;widget&gt;&amp;); // "might" retain refcount
@@ -7388,9 +7432,9 @@ void reseat(shared_ptr&lt;widget&gt;&amp;);          // "might" reseat ptr
 <h3 id="anamerrsharedptrparamar35takeashared_ptrwidgetparametertoexpressthatafunctionmightreseatthesharedpointer"><a name="Rr-sharedptrparam"></a>R.35: Take a <code>shared_ptr&lt;widget&gt;&amp;</code> parameter to express that a function might reseat the shared pointer</h3>
 <h5 id="reason-189">Reason</h5>
 <p>This makes the function's reseating explicit.</p>
-<h5 id="note-173">Note</h5>
+<h5 id="note-174">Note</h5>
 <p>"reseat" means "making a reference or a smart pointer refer to a different object."</p>
-<h5 id="examplegood-11">Example, good</h5>
+<h5 id="examplegood-12">Example, good</h5>
 <pre><code>void share(shared_ptr&lt;widget&gt;);            // share -- "will" retain refcount
 
 void reseat(shared_ptr&lt;widget&gt;&amp;);          // "might" reseat ptr
@@ -7406,7 +7450,7 @@ void may_share(const shared_ptr&lt;widget&gt;&amp;); // "might" retain refcount
 <h3 id="anamerrsharedptrparamconstar36takeaconstshared_ptrwidgetparametertoexpressthatitmightretainareferencecounttotheobject"><a name="Rr-sharedptrparam-const"></a>R.36: Take a <code>const shared_ptr&lt;widget&gt;&amp;</code> parameter to express that it might retain a reference count to the object ???</h3>
 <h5 id="reason-190">Reason</h5>
 <p>This makes the function's ??? explicit.</p>
-<h5 id="examplegood-12">Example, good</h5>
+<h5 id="examplegood-13">Example, good</h5>
 <pre><code>void share(shared_ptr&lt;widget&gt;);            // share -- "will" retain refcount
 
 void reseat(shared_ptr&lt;widget&gt;&amp;);          // "might" reseat ptr
@@ -7425,7 +7469,7 @@ void may_share(const shared_ptr&lt;widget&gt;&amp;); // "might" retain refcount
 Functions should prefer to pass raw pointers and references down call chains.
 At the top of the call tree where you obtain the raw pointer or reference from a smart pointer that keeps the object alive.
 You need to be sure that the smart pointer cannot inadvertently be reset or reassigned from within the call tree below.</p>
-<h5 id="note-174">Note</h5>
+<h5 id="note-175">Note</h5>
 <p>To do this, sometimes you need to take a local copy of a smart pointer, which firmly keeps the object alive for the duration of the function and the call tree.</p>
 <h5 id="example-161">Example</h5>
 <p>Consider this code:</p>
@@ -7792,7 +7836,7 @@ case NE:
 // ...
 }
 </code></pre>
-<h5 id="note-175">Note</h5>
+<h5 id="note-176">Note</h5>
 <p>Do not use <code>ALL_CAPS</code> for constants just because constants used to be macros.</p>
 <h5 id="enforcement-189">Enforcement</h5>
 <p>Flag all uses of ALL CAPS. For older code, accept ALL CAPS for macro names and flag all non-ALL-CAPS macro names.</p>
@@ -7862,7 +7906,7 @@ auto Container&lt;T&gt;::first() -&gt; Iterator;   // Container&lt;T&gt;::Iterat
 <pre><code>auto lst = { 1, 2, 3 };   // lst is an initializer list
 auto x{1};   // x is an int (after correction of the C++14 standard; initializer_list in C++11)
 </code></pre>
-<h5 id="note-176">Note</h5>
+<h5 id="note-177">Note</h5>
 <p>When concepts become available, we can (and should) be more specific about the type we are deducing:</p>
 <pre><code>// ...
 ForwardIterator p = algo(x, y, z);
@@ -7897,7 +7941,7 @@ return d;
 <p>If this is a large <code>if</code>-statement, it is easy to overlook that a new <code>d</code> has been introduced in the inner scope.
 This is a known source of bugs.
 Sometimes such reuse of a name in an inner scope is called "shadowing".</p>
-<h5 id="note-177">Note</h5>
+<h5 id="note-178">Note</h5>
 <p>Shadowing is primarily a problem when functions are too large and too complex.</p>
 <h5 id="example-175">Example</h5>
 <p>Shadowing of function arguments in the outermost block is disallowed by the language:</p>
@@ -7971,7 +8015,7 @@ Simplify refactoring.</p>
     // ...
 }
 </code></pre>
-<h5 id="note-178">Note</h5>
+<h5 id="note-179">Note</h5>
 <p>The <em>always initialize</em> rule is deliberately stronger than the <em>an object must be set before used</em> language rule.
 The latter, more relaxed rule, catches the technical bugs, but:</p>
 <ul>
@@ -8007,7 +8051,7 @@ A popular reason for such examples is "efficiency", but a compiler that can dete
 
 auto [i, j] = make_related_widgets(cond);    // C++17
 </code></pre>
-<h5 id="note-179">Note</h5>
+<h5 id="note-180">Note</h5>
 <p>Complex initialization has been popular with clever programmers for decades.
 It has also been a major source of errors and complexity.
 Many such errors are introduced during maintenance years after the initial implementation.</p>
@@ -8079,7 +8123,7 @@ else {
 }
 </code></pre>
 <p>Now the compiler cannot even simply detect a used-before-set. Further, we've introduced complexity in the state space for widget: which operations are valid on an <code>uninit</code> widget and which are not?</p>
-<h5 id="note-180">Note</h5>
+<h5 id="note-181">Note</h5>
 <p>Sometimes, a lambda can be used as an initializer to avoid an uninitialized variable:</p>
 <pre><code>error_code ec;
 Value v = [&amp;] {
@@ -8158,13 +8202,13 @@ vector&lt;int&gt; v = {1, 2, 3, 4, 5, 6};
 <pre><code>vector&lt;int&gt; v1(10);    // vector of 10 elements with the default value 0
 vector&lt;int&gt; v2 {10};   // vector of 1 element with the value 10
 </code></pre>
-<h5 id="note-181">Note</h5>
+<h5 id="note-182">Note</h5>
 <p><code>{}</code>-initializers do not allow narrowing conversions.</p>
 <h5 id="example-182">Example</h5>
 <pre><code>int x {7.9};   // error: narrowing
 int y = 7.9;   // OK: y becomes 7. Hope for a compiler warning
 </code></pre>
-<h5 id="note-182">Note</h5>
+<h5 id="note-183">Note</h5>
 <p><code>{}</code> initialization can be used for all initialization; other forms of initialization can't:</p>
 <pre><code>auto p = new vector&lt;int&gt; {1, 2, 3, 4, 5};   // initialized vector
 D::D(int a, int b) :m{a, b} {   // member initializer (e.g., m might be a pair)
@@ -8176,7 +8220,7 @@ struct S {
     // ...
 };
 </code></pre>
-<h5 id="note-183">Note</h5>
+<h5 id="note-184">Note</h5>
 <p>Initialization of a variable declared using <code>auto</code> with a single value, e.g., <code>{v}</code>, had surprising results until C++17.
 The C++17 rules are somewhat less surprising:</p>
 <pre><code>auto x1 {7};        // x1 is an int with the value 7
@@ -8188,7 +8232,7 @@ auto x22 = {7, 8};  // x2 is an initializer_list&lt;int&gt; with elements 7 and 
 <p>So use <code>={...}</code> if you really want an <code>initializer_list&lt;T&gt;</code></p>
 <pre><code>auto fib10 = {1, 1, 2, 3, 5, 8, 13, 21, 34, 55};   // fib10 is a list
 </code></pre>
-<h5 id="note-184">Note</h5>
+<h5 id="note-185">Note</h5>
 <p>Old habits die hard, so this rule is hard to apply consistently, especially as there are so many cases where <code>=</code> is innocent.</p>
 <h5 id="example-183">Example</h5>
 <pre><code>template&lt;typename T&gt;
@@ -8257,7 +8301,7 @@ not. Unfortunately, it may be impossible to detect when a non-<code>const</code>
     for (i = 0; i &lt; 200; ++i) { /* ... */ } // bad: i recycled
 }
 </code></pre>
-<h5 id="note-185">Note</h5>
+<h5 id="note-186">Note</h5>
 <p>As an optimization, you may want to reuse a buffer as a scratch pad, but even then prefer to limit the variable's scope as much as possible and be careful not to cause bugs from data left in a recycled buffer as this is a common source of security bugs.</p>
 <pre><code>void write_to_file() {
     std::string buffer;             // to avoid reallocations on every loop iteration
@@ -8292,7 +8336,7 @@ void f()
     // ...
 }
 </code></pre>
-<h5 id="note-186">Note</h5>
+<h5 id="note-187">Note</h5>
 <p>The definition of <code>a1</code> is legal C++ and has always been.
 There is a lot of such code.
 It is error-prone, though, especially when the bound is non-local.
@@ -8324,7 +8368,7 @@ for (auto i = 2; i &lt;= N; ++i) {          // this could be some
 }                                        // needed to initialize x
 // from here, x should be const, but we can't say so in code in this style
 </code></pre>
-<h5 id="examplegood-13">Example, good</h5>
+<h5 id="examplegood-14">Example, good</h5>
 <pre><code>const widget x = [&amp;]{
     widget val;                                // assume that widget has a default constructor
     for (auto i = 2; i &lt;= N; ++i) {            // this could be some
@@ -8355,7 +8399,7 @@ Macros complicate tool building.</p>
 <pre><code>#define Case break; case   /* BAD */
 </code></pre>
 <p>This innocuous-looking macro makes a single lower case <code>c</code> instead of a <code>C</code> into a bad flow-control bug.</p>
-<h5 id="note-187">Note</h5>
+<h5 id="note-188">Note</h5>
 <p>This rule does not ban the use of macros for "configuration control" use in <code>#ifdef</code>s, etc.</p>
 <h5 id="enforcement-202">Enforcement</h5>
 <p>Scream when you see a macro that isn't just used for source control (e.g., <code>#ifdef</code>)</p>
@@ -8394,7 +8438,7 @@ template&lt;typename T&gt; T square(T a, T b) { return a * b; }
 
 #define ZCORP_CHAR    /* Still evil, but less likely to clash */
 </code></pre>
-<h5 id="note-188">Note</h5>
+<h5 id="note-189">Note</h5>
 <p>Avoid macros if you can: <a href="#Res-macros">ES.30</a>, <a href="#Res-macros2">ES.31</a>, and <a href="#Res-ALL_CAPS">ES.32</a>.
 However, there are billions of lines of code littered with macros and a long tradition for using and overusing macros.
 If you are forced to use macros, use long names and supposedly unique prefixes (e.g., your organization's name) to lower the likelihood of a clash.</p>
@@ -8462,7 +8506,7 @@ void use()
     error(5, "oh", "no", nullptr); // Compile error! No need for nullptr.
 }
 </code></pre>
-<h5 id="note-189">Note</h5>
+<h5 id="note-190">Note</h5>
 <p>This is basically the way <code>printf</code> is implemented.</p>
 <h5 id="enforcement-206">Enforcement</h5>
 <ul>
@@ -8500,11 +8544,11 @@ x = a &amp; b + c * d &amp;&amp; e ^ f == 7;
 x = x++ + x++ + ++x;
 </code></pre>
 <p>Some of these expressions are unconditionally bad (e.g., they rely on undefined behavior). Others are simply so complicated and/or unusual that even good programmers could misunderstand them or overlook a problem when in a hurry.</p>
-<h5 id="note-190">Note</h5>
+<h5 id="note-191">Note</h5>
 <p>C++17 tightens up the rules for the order of evaluation
 (left-to-right except right-to-left in assignments, and the order of evaluation of function arguments is unspecified; <a href="#Res-order">see ES.43</a>),
 but that doesn't change the fact that complicated expressions are potentially confusing.</p>
-<h5 id="note-191">Note</h5>
+<h5 id="note-192">Note</h5>
 <p>A programmer should know and use the basic rules for expressions.</p>
 <h5 id="example-192">Example</h5>
 <pre><code>x = k * y + z;             // OK
@@ -8541,7 +8585,7 @@ if (a &amp; flag != 0)  // bad: means a&amp;(flag != 0)
 <p>Note: We recommend that programmers know their precedence table for the arithmetic operations, the logical operations, but consider mixing bitwise logical operations with other operators in need of parentheses.</p>
 <pre><code>if ((a &amp; flag) != 0)  // OK: works as intended
 </code></pre>
-<h5 id="note-192">Note</h5>
+<h5 id="note-193">Note</h5>
 <p>You should know enough not to need parentheses for:</p>
 <pre><code>if (a &lt; 0 || a &lt;= max) {
     // ...
@@ -8556,7 +8600,7 @@ if (a &amp; flag != 0)  // bad: means a&amp;(flag != 0)
 <h3 id="anameresptraes42keepuseofpointerssimpleandstraightforward"><a name="Res-ptr"></a>ES.42: Keep use of pointers simple and straightforward</h3>
 <h5 id="reason-218">Reason</h5>
 <p>Complicated pointer manipulation is a major source of errors.</p>
-<h5 id="note-193">Note</h5>
+<h5 id="note-194">Note</h5>
 <p>Use <code>gsl::span</code> instead.
 Pointers should <a href="#Ri-array">only refer to single objects</a>.
 Pointer arithmetic is fragile and easy to get wrong, the source of many, many bad bugs and security violations.
@@ -8585,7 +8629,7 @@ Access into an array with known bounds using a constant as a subscript can be va
     use(&amp;p[0], 3);     // BAD
 }
 </code></pre>
-<h5 id="examplegood-14">Example, good</h5>
+<h5 id="examplegood-15">Example, good</h5>
 <pre><code>void f(span&lt;int&gt; a) // BETTER: use span in the function declaration
 {
     if (a.size() &lt; 2) return;
@@ -8603,7 +8647,7 @@ Access into an array with known bounds using a constant as a subscript can be va
     use(a.data(), 3);  // OK
 }
 </code></pre>
-<h5 id="note-194">Note</h5>
+<h5 id="note-195">Note</h5>
 <p>Subscripting with a variable is difficult for both tools and humans to validate as safe.
 <code>span</code> is a run-time bounds-checked, safe type for accessing arrays of data.
 <code>at()</code> is another alternative that ensures single accesses are bounds-checked.
@@ -8617,7 +8661,7 @@ If iterators are needed to access an array, use the iterators from a <code>span<
     a[10] = 4;    // BAD (but easily caught by tools) -- no replacement, just don't do this
 }
 </code></pre>
-<h5 id="examplegood-15">Example, good</h5>
+<h5 id="examplegood-16">Example, good</h5>
 <p>Use a <code>span</code>:</p>
 <pre><code>void f1(span&lt;int, 10&gt; a, int pos) // A1: Change parameter type to use span
 {
@@ -8647,7 +8691,7 @@ void f2(array&lt;int, 10&gt; arr, int pos) // A2: Add local span and use that
         arr[i] = i; // BAD, cannot use non-constant indexer
 }
 </code></pre>
-<h5 id="examplegood-16">Example, good</h5>
+<h5 id="examplegood-17">Example, good</h5>
 <p>Use a <code>span</code>:</p>
 <pre><code>void f1()
 {
@@ -8683,7 +8727,7 @@ void f2(array&lt;int, 10&gt; arr, int pos) // A2: Add local span and use that
          e = i++;
 }
 </code></pre>
-<h5 id="note-195">Note</h5>
+<h5 id="note-196">Note</h5>
 <p>Tooling can offer rewrites of array accesses that involve dynamic index expressions to use <code>at()</code> instead:</p>
 <pre><code>static int a[10];
 
@@ -8729,7 +8773,7 @@ void f2()
 <h5 id="reason-219">Reason</h5>
 <p>You have no idea what such code does. Portability.
 Even if it does something sensible for you, it may do something different on another compiler (e.g., the next release of your compiler) or with a different optimizer setting.</p>
-<h5 id="note-196">Note</h5>
+<h5 id="note-197">Note</h5>
 <p>C++17 tightens up the rules for the order of evaluation:
 left-to-right except right-to-left in assignments, and the order of evaluation of function arguments is unspecified.</p>
 <p>However, remember that your code may be compiled with a pre-C++17 compiler (e.g., through cut-and-paste) so don't be too clever.</p>
@@ -8742,7 +8786,7 @@ left-to-right except right-to-left in assignments, and the order of evaluation o
 <h3 id="anameresorderfctaes44dontdependonorderofevaluationoffunctionarguments"><a name="Res-order-fct"></a>ES.44: Don't depend on order of evaluation of function arguments</h3>
 <h5 id="reason-220">Reason</h5>
 <p>Because that order is unspecified.</p>
-<h5 id="note-197">Note</h5>
+<h5 id="note-198">Note</h5>
 <p>C++17 tightens up the rules for the order of evaluation, but the order of evaluation of function arguments is still unspecified.</p>
 <h5 id="example-196">Example</h5>
 <pre><code>int i = 0;
@@ -8798,7 +8842,7 @@ void f(int x, long y, double d)
     char c3 = d;   // bad: narrowing
 }
 </code></pre>
-<h5 id="note-198">Note</h5>
+<h5 id="note-199">Note</h5>
 <p>The guideline support library offers a <code>narrow_cast</code> operation for specifying that narrowing is acceptable and a <code>narrow</code> ("narrow if") that throws an exception if a narrowing would throw away information:</p>
 <pre><code>i = narrow_cast&lt;int&gt;(d);   // OK (you asked for it): narrowing: i becomes 7
 i = narrow&lt;int&gt;(d);        // OK: throws narrowing_error
@@ -8853,17 +8897,17 @@ cout &lt;&lt; d &lt;&lt; ' ' &lt;&lt; *p &lt;&lt; ' ' &lt;&lt; *q &lt;&lt; '\n';
 <pre><code>3.29048e-321 666 666
 </code></pre>
 <p>Surprised? I'm just glad I didn't crash the program.</p>
-<h5 id="note-199">Note</h5>
+<h5 id="note-200">Note</h5>
 <p>Programmers who write casts typically assume that they know what they are doing, 
 or that writing a cast makes the program "easier to read".
 In fact, they often disable the general rules for using values.
 Overload resolution and template instantiation usually pick the right function if there is a right function to pick.
 If there is not, maybe there ought to be, rather than applying a local fix (cast).</p>
-<h5 id="note-200">Note</h5>
+<h5 id="note-201">Note</h5>
 <p>Casts are necessary in a systems programming language.  For example, how else
 would we get the address of a device register into a pointer?  However, casts
 are seriously overused as well as a major source of errors.</p>
-<h5 id="note-201">Note</h5>
+<h5 id="note-202">Note</h5>
 <p>If you feel the need for a lot of casts, there may be a fundamental design problem.</p>
 <h5 id="exception-40">Exception</h5>
 <p>Casting to <code>(void)</code> is the Standard-sanctioned way to turn off <code>[[nodiscard]]</code> warnings. If you are calling a function with a <code>[[nodiscard]]</code> return and you deliberately want to discard the result, first think hard about whether that is really a good idea (there is usually a good reason the author of the function or of the return type used <code>[[nodiscard]]</code> in the first place), but if you still think it's appropriate and your code reviewer agrees, write <code>(void)</code> to turn off the warning.</p>
@@ -8913,7 +8957,7 @@ template&lt;typename D&gt; D* upcast(B* pb)
 </code></pre>
 <p>The example was synthesized from real-world bugs where <code>D</code> used to be derived from <code>B</code>, but someone refactored the hierarchy.
 The C-style cast is dangerous because it can do any kind of conversion, depriving us of any protection from mistakes (now or in the future).</p>
-<h5 id="note-202">Note</h5>
+<h5 id="note-203">Note</h5>
 <p>When converting between types with no information loss (e.g. from <code>float</code> to
 <code>double</code> or <code>int64</code> from <code>int32</code>), brace initialization may be used instead.</p>
 <pre><code>double d {some_float};
@@ -8923,7 +8967,7 @@ int64_t i {some_int32};
 conversions between types that might result in loss of precision. (It is a
 compilation error to try to initialize a <code>float</code> from a <code>double</code> in this fashion,
 for example.)</p>
-<h5 id="note-203">Note</h5>
+<h5 id="note-204">Note</h5>
 <p><code>reinterpret_cast</code> can be essential, but the essential uses (e.g., turning a machine address into pointer) are not type safe:</p>
 <pre><code>auto p = reinterpret_cast&lt;Device_register&gt;(0x800);  // inherently dangerous
 </code></pre>
@@ -9197,7 +9241,7 @@ void forwarder(T&amp;&amp; t) {
 <h3 id="anameresnewaes60avoidnewanddeleteoutsideresourcemanagementfunctions"><a name="Res-new"></a>ES.60: Avoid <code>new</code> and <code>delete</code> outside resource management functions</h3>
 <h5 id="reason-229">Reason</h5>
 <p>Direct resource management in application code is error-prone and tedious.</p>
-<h5 id="note-204">Note</h5>
+<h5 id="note-205">Note</h5>
 <p>also known as "No naked <code>new</code>!"</p>
 <h5 id="examplebad-95">Example, bad</h5>
 <pre><code>void f(int n)
@@ -9222,7 +9266,7 @@ void forwarder(T&amp;&amp; t) {
     delete p;   // error: just delete the object p, rather than delete the array p[]
 }
 </code></pre>
-<h5 id="note-205">Note</h5>
+<h5 id="note-206">Note</h5>
 <p>This example not only violates the <a href="#Res-new">no naked <code>new</code> rule</a> as in the previous example, it has many more problems.</p>
 <h5 id="enforcement-221">Enforcement</h5>
 <ul>
@@ -9241,7 +9285,7 @@ void forwarder(T&amp;&amp; t) {
     if (0 &lt; &amp;a1[5] - &amp;a2[7]) {}   // bad: undefined
 }
 </code></pre>
-<h5 id="note-206">Note</h5>
+<h5 id="note-207">Note</h5>
 <p>This example has many more problems.</p>
 <h5 id="enforcement-222">Enforcement</h5>
 <p>???</p>
@@ -9303,15 +9347,15 @@ The casts notations <code>T(e)</code> and <code>(T)e</code> are neither safe nor
 </code></pre>
 <p>The integer to/from pointer conversions are implementation defined when using the <code>T(e)</code> or <code>(T)e</code> notations, and non-portable
 between platforms with different integer and pointer sizes.</p>
-<h5 id="note-207">Note</h5>
-<p><a href="#Res-casts">Avoid casts</a> (explicit type conversion) and if you must <a href="#Res-casts-named">prefer named casts</a>.</p>
 <h5 id="note-208">Note</h5>
+<p><a href="#Res-casts">Avoid casts</a> (explicit type conversion) and if you must <a href="#Res-casts-named">prefer named casts</a>.</p>
+<h5 id="note-209">Note</h5>
 <p>When unambiguous, the <code>T</code> can be left out of <code>T{e}</code>.</p>
 <pre><code>complex&lt;double&gt; f(complex&lt;double&gt;);
 
 auto z = f({2*pi, 1});
 </code></pre>
-<h5 id="note-209">Note</h5>
+<h5 id="note-210">Note</h5>
 <p>The construction notation is the most general <a href="#Res-list">initializer notation</a>.</p>
 <h5 id="exception-42">Exception</h5>
 <p><code>std::vector</code> and other containers were defined before we had <code>{}</code> as a notation for construction.
@@ -9350,7 +9394,7 @@ Vector&lt;Count&gt; v3{Count{10}};    // yes, there is still a very minor proble
 <h5 id="reason-234">Reason</h5>
 <p>Dereferencing an invalid pointer, such as <code>nullptr</code>, is undefined behavior, typically leading to immediate crashes,
 wrong results, or memory corruption.</p>
-<h5 id="note-210">Note</h5>
+<h5 id="note-211">Note</h5>
 <p>This rule is an obvious and well-known language rule, but can be hard to follow.
 It takes good coding style, library support, and static analysis to eliminate violations without major overhead.
 This is a major part of the discussion of <a href="#Stroustrup15">C++'s resource- and type-safety model</a>.</p>
@@ -9524,7 +9568,7 @@ for (gsl::index i = 0; i &lt; v.size(); ++i) { // body messes with loop variable
 </code></pre>
 <p>A human or a good static analyzer may determine that there really isn't a side effect on <code>v</code> in <code>f(v, &amp;v[i])</code> so that the loop can be rewritten.</p>
 <p>"Messing with the loop variable" in the body of a loop is typically best avoided.</p>
-<h5 id="note-211">Note</h5>
+<h5 id="note-212">Note</h5>
 <p>Don't use expensive copies of the loop variable of a range-<code>for</code> loop:</p>
 <pre><code>for (string s : vs) // ...
 </code></pre>
@@ -9609,7 +9653,7 @@ do {
     // ...
 } while (x &lt; 0);
 </code></pre>
-<h5 id="note-212">Note</h5>
+<h5 id="note-213">Note</h5>
 <p>Yes, there are genuine examples where a <code>do</code>-statement is a clear statement of a solution, but also many bugs.</p>
 <h5 id="enforcement-231">Enforcement</h5>
 <p>Flag <code>do</code>-statements.</p>
@@ -9663,7 +9707,7 @@ consider <code>gsl::finally()</code> as a cleaner and more reliable alternative 
 <p>Often. a loop that uses <code>continue</code> can equivalently and as clearly be expressed by an <code>if</code>-statement.</p>
 <pre><code>???
 </code></pre>
-<h5 id="note-213">Note</h5>
+<h5 id="note-214">Note</h5>
 <p>If you really need to break out a loop, a <code>break</code> is typically better than alternatives such as <a href="#Res-loop-counter">modifying the loop variable</a> or a <a href="#Res-goto"><code>goto</code></a>:</p>
 <h5 id="enforcement-233">Enforcement</h5>
 <p>???</p>
@@ -9710,7 +9754,7 @@ case Error:
     break;
 }
 </code></pre>
-<h5 id="note-214">Note</h5>
+<h5 id="note-215">Note</h5>
 <p>Multiple case labels of a single statement is OK:</p>
 <pre><code>switch (x) {
 case 'a':
@@ -9800,7 +9844,7 @@ To avoid unpleasant surprises.</p>
 This is not an uncommon mistake.
 In particular, this particular example can lead to hard-to find race conditions.
 There are exceedingly clever uses of this "idiom", but they are far rarer than the mistakes.</p>
-<h5 id="note-215">Note</h5>
+<h5 id="note-216">Note</h5>
 <p>Unnamed function arguments are fine.</p>
 <h5 id="enforcement-236">Enforcement</h5>
 <p>Flag statements that are just a temporary</p>
@@ -9868,7 +9912,7 @@ For example:</p>
 <pre><code>for (string s; cin &gt;&gt; s; ) v.push_back(s);
 </code></pre>
 <p>This invokes <code>istream</code>'s <code>operator bool()</code>.</p>
-<h5 id="note-216">Note</h5>
+<h5 id="note-217">Note</h5>
 <p>Explicit comparison of an integer to <code>0</code> is in general not redundant.
 The reason is that (as opposed to pointers and Booleans) an integer often has more than two reasonable values.
 Furthermore <code>0</code> (zero) is often used to indicate success.
@@ -9892,7 +9936,7 @@ Being verbose and writing </p>
 <pre><code>if(strcmp(p1, p2) != 0) { ... }   // are the two C-style strings equal? (mistake!)
 </code></pre>
 <p>would not in itself save you.</p>
-<h5 id="note-217">Note</h5>
+<h5 id="note-218">Note</h5>
 <p>The opposite condition is most easily expressed using a negation:</p>
 <pre><code>// These all mean "if `p` is `nullptr`"
 if (!p) { ... }           // good
@@ -9914,7 +9958,7 @@ cout &lt;&lt; x + y &lt;&lt; '\n';  // unsigned result: 4
 cout &lt;&lt; x * y &lt;&lt; '\n';  // unsigned result, possibly 4294967275
 </code></pre>
 <p>It is harder to spot the problem in more realistic examples.</p>
-<h5 id="note-218">Note</h5>
+<h5 id="note-219">Note</h5>
 <p>Unfortunately, C++ uses signed integers for array subscripts and the standard library uses unsigned integers for container subscripts.
 This precludes consistency. Use <code>gsl::index</code> for subscripts; <a href="#Res-subscripts">see ES.107</a>.</p>
 <h5 id="enforcement-240">Enforcement</h5>
@@ -9929,7 +9973,7 @@ This precludes consistency. Use <code>gsl::index</code> for subscripts; <a href=
 <pre><code>unsigned char x = 0b1010'1010;
 unsigned char y = ~x;   // y == 0b0101'0101;
 </code></pre>
-<h5 id="note-219">Note</h5>
+<h5 id="note-220">Note</h5>
 <p>Unsigned types can also be useful for modulo arithmetic.
 However, if you want modulo arithmetic add
 comments as necessary noting the reliance on wraparound behavior, as such code
@@ -10037,7 +10081,7 @@ while (n--)
 <h3 id="anamereszeroaes105dontdividebyzero"><a name="Res-zero"></a>ES.105: Don't divide by zero</h3>
 <h5 id="reason-254">Reason</h5>
 <p>The result is undefined and probably a crash.</p>
-<h5 id="note-220">Note</h5>
+<h5 id="note-221">Note</h5>
 <p>This also applies to <code>%</code>.</p>
 <h5 id="examplebad-106">Example; bad</h5>
 <pre><code>double divide(int a, int b) {
@@ -10045,7 +10089,7 @@ while (n--)
     return a / b;
 }
 </code></pre>
-<h5 id="examplegood-17">Example; good</h5>
+<h5 id="examplegood-18">Example; good</h5>
 <pre><code>double divide(int a, int b) {
     // good, address via precondition (and replace with contracts once C++ gets them)
     Expects(b != 0);
@@ -10109,7 +10153,7 @@ int f(Positive arg) { return arg; }
 int r1 = f(2);
 int r2 = f(-2);  // throws
 </code></pre>
-<h5 id="note-221">Note</h5>
+<h5 id="note-222">Note</h5>
 <p>???</p>
 <h5 id="enforcement-246">Enforcement</h5>
 <p>Hard: there is a lot of code using <code>unsigned</code> and we don't offer a practical positive number type.</p>
@@ -10135,7 +10179,7 @@ for (auto i = vec.size()-1; i &gt;= 0; i -= 2)                // bug
 for (int i = vec.size()-1; i &gt;= 0; i -= 2)                 // may not be big enough
     cout &lt;&lt; vec[i] &lt;&lt; '\n';
 </code></pre>
-<h5 id="examplegood-18">Example, good</h5>
+<h5 id="examplegood-19">Example, good</h5>
 <pre><code>vector&lt;int&gt; vec = /*...*/;
 
 for (gsl::index i = 0; i &lt; vec.size(); i += 2)             // ok
@@ -10143,7 +10187,7 @@ for (gsl::index i = 0; i &lt; vec.size(); i += 2)             // ok
 for (gsl::index i = vec.size()-1; i &gt;= 0; i -= 2)          // ok
     cout &lt;&lt; vec[i] &lt;&lt; '\n';
 </code></pre>
-<h5 id="note-222">Note</h5>
+<h5 id="note-223">Note</h5>
 <p>The built-in array uses signed subscripts.
 The standard-library containers use unsigned subscripts.
 Thus, no perfect and fully compatible solution is possible (unless and until the standard-library containers change to use signed subscripts someday in the future).
@@ -10202,7 +10246,7 @@ Do not blindly try to follow them in general code: achieving the goals of low la
 <h3 id="anamerperreasonaper1dontoptimizewithoutreason"><a name="Rper-reason"></a>Per.1: Don't optimize without reason</h3>
 <h5 id="reason-257">Reason</h5>
 <p>If there is no need for optimization, the main result of the effort will be more errors and higher maintenance costs.</p>
-<h5 id="note-223">Note</h5>
+<h5 id="note-224">Note</h5>
 <p>Some people optimize out of habit or because it's fun.</p>
 <p>???</p>
 <h3 id="anamerperknuthaper2dontoptimizeprematurely"><a name="Rper-Knuth"></a>Per.2: Don't optimize prematurely</h3>
@@ -10212,7 +10256,7 @@ Do not blindly try to follow them in general code: achieving the goals of low la
 <h3 id="anamerpercriticalaper3dontoptimizesomethingthatsnotperformancecritical"><a name="Rper-critical"></a>Per.3: Don't optimize something that's not performance critical</h3>
 <h5 id="reason-259">Reason</h5>
 <p>Optimizing a non-performance-critical part of a program has no effect on system performance.</p>
-<h5 id="note-224">Note</h5>
+<h5 id="note-225">Note</h5>
 <p>If your program spends most of its time waiting for the web or for a human, optimization of in-memory computation is probably useless.</p>
 <p>Put another way: If your program spends 4% of its processing time doing
 computation A and 40% of its time doing computation B, a 50% improvement on A is
@@ -10222,7 +10266,7 @@ href="#Rper-Knuth">Per.2</a>.)</p>
 <h3 id="anamerpersimpleaper4dontassumethatcomplicatedcodeisnecessarilyfasterthansimplecode"><a name="Rper-simple"></a>Per.4: Don't assume that complicated code is necessarily faster than simple code</h3>
 <h5 id="reason-260">Reason</h5>
 <p>Simple code can be very fast. Optimizers sometimes do marvels with simple code</p>
-<h5 id="examplegood-19">Example, good</h5>
+<h5 id="examplegood-20">Example, good</h5>
 <pre><code>// clear expression of intent, fast execution
 
 vector&lt;uint8_t&gt; v(100000);
@@ -10241,22 +10285,22 @@ for (size_t i = 0; i &lt; v.size(); i += sizeof(uint64_t))
     quad_word = ~quad_word;
 }
 </code></pre>
-<h5 id="note-225">Note</h5>
+<h5 id="note-226">Note</h5>
 <p>???</p>
 <p>???</p>
 <h3 id="anamerperlowaper5dontassumethatlowlevelcodeisnecessarilyfasterthanhighlevelcode"><a name="Rper-low"></a>Per.5: Don't assume that low-level code is necessarily faster than high-level code</h3>
 <h5 id="reason-261">Reason</h5>
 <p>Low-level code sometimes inhibits optimizations. Optimizers sometimes do marvels with high-level code.</p>
-<h5 id="note-226">Note</h5>
+<h5 id="note-227">Note</h5>
 <p>???</p>
 <p>???</p>
 <h3 id="anamerpermeasureaper6dontmakeclaimsaboutperformancewithoutmeasurements"><a name="Rper-measure"></a>Per.6: Don't make claims about performance without measurements</h3>
 <h5 id="reason-262">Reason</h5>
 <p>The field of performance is littered with myth and bogus folklore.
 Modern hardware and optimizers defy naive assumptions; even experts are regularly surprised.</p>
-<h5 id="note-227">Note</h5>
-<p>Getting good performance measurements can be hard and require specialized tools.</p>
 <h5 id="note-228">Note</h5>
+<p>Getting good performance measurements can be hard and require specialized tools.</p>
+<h5 id="note-229">Note</h5>
 <p>A few simple microbenchmarks using Unix <code>time</code> or the standard-library <code>&lt;chrono&gt;</code> can help dispel the most obvious myths.
 If you can't measure your complete system accurately, at least try to measure a few of your key operations and algorithms.
 A profiler can help tell you which parts of your system are performance critical.
@@ -10306,7 +10350,7 @@ void sort(Sortable&amp; c, Predicate&lt;Value_type&lt;Sortable&gt;&gt; p);
 </code></pre>
 <p>The standard-library specification of <code>sort</code> offers those two versions,
 but the semantics is expressed in English rather than code using concepts.</p>
-<h5 id="note-229">Note</h5>
+<h5 id="note-230">Note</h5>
 <p>Premature optimization is said to be <a href="#Rper-Knuth">the root of all evil</a>, but that's not a reason to despise performance.
 It is never premature to consider what makes a design amenable to improvement, and improved performance is a commonly desired improvement.
 Aim to build a set of habits that by default results in efficient, maintainable, and optimizable code.
@@ -10366,13 +10410,13 @@ They are simply three ways of presenting the basic binary search algorithm to us
 ranging from the simplest ("make simple things simple!")
 to returning complete, but not always needed, information ("don't hide useful information").
 Naturally, crafting such a set of interfaces requires experience and domain knowledge.</p>
-<h5 id="note-230">Note</h5>
+<h5 id="note-231">Note</h5>
 <p>Do not simply craft the interface to match the first implementation and the first use case you think of.
 Once your first initial implementation is complete, review it; once you deploy it, mistakes will be hard to remedy.</p>
-<h5 id="note-231">Note</h5>
+<h5 id="note-232">Note</h5>
 <p>A need for efficiency does not imply a need for <a href="#Rper-low">low-level code</a>.
 High-level code does not imply slow or bloated.</p>
-<h5 id="note-232">Note</h5>
+<h5 id="note-233">Note</h5>
 <p>Things have costs.
 Don't be paranoid about costs (modern computers really are very fast),
 but have a rough idea of the order of magnitude of cost of what you use.
@@ -10383,12 +10427,12 @@ a string comparison,
 a system call,
 a disk access,
 and a message through a network.</p>
-<h5 id="note-233">Note</h5>
+<h5 id="note-234">Note</h5>
 <p>If you can only think of one implementation, you probably don't have something for which you can devise a stable interface.
 Maybe, it is just an implementation detail - not every piece of code needs a stable interface - but pause and consider.
 One question that can be useful is
 "what interface would be needed if this operation should be implemented using multiple threads? be vectorized?"</p>
-<h5 id="note-234">Note</h5>
+<h5 id="note-235">Note</h5>
 <p>This rule does not contradict the <a href="#Rper-Knuth">Don't optimize prematurely</a> rule.
 It complements it encouraging developers enable later - appropriate and non-premature - optimization, if and where needed.</p>
 <h5 id="enforcement-248">Enforcement</h5>
@@ -10454,7 +10498,7 @@ void f()
 <p>Assume that <code>Scoped</code> and <code>On_heap</code> provide compatible user interfaces.
 Here we compute the optimal type to use at compile time.
 There are similar techniques for selecting the optimal function to call.</p>
-<h5 id="note-235">Note</h5>
+<h5 id="note-236">Note</h5>
 <p>The ideal is {not} to try execute everything at compile time.
 Obviously, most computations depend on inputs so they can't be moved to compile time,
 but beyond that logical constraint is the fact that complex compile-time computation can seriously increase compile times
@@ -10596,7 +10640,7 @@ Therefore, code that is never intended to run in a multi-threaded environment sh
 <h3 id="anamerconcracesacp2avoiddataraces"><a name="Rconc-races"></a>CP.2: Avoid data races</h3>
 <h5 id="reason-270">Reason</h5>
 <p>Unless you do, nothing is guaranteed to work and subtle errors will persist.</p>
-<h5 id="note-236">Note</h5>
+<h5 id="note-237">Note</h5>
 <p>In a nutshell, if two threads can access the same object concurrently (without synchronization), and at least one is a writer (performing a non-<code>const</code> operation), you have a data race.
 For further information of how to use synchronization well to eliminate data races, please consult a good book about concurrency.</p>
 <h5 id="examplebad-109">Example, bad</h5>
@@ -10695,7 +10739,7 @@ void process_readings(const vector&lt;Reading&gt;&amp; surface_readings)
 </code></pre>
 <p>Without those <code>const</code>s, we would have to review every asynchronously invoked function for potential data races on <code>surface_readings</code>.
 Making <code>surface_readings</code> be <code>const</code> (with respect to this function) allow reasoning using only the function body.</p>
-<h5 id="note-237">Note</h5>
+<h5 id="note-238">Note</h5>
 <p>Immutable data can be safely and efficiently shared.
 No locking is needed: You can't have a data race on a constant.
 See also <a href="#SScp-mess">CP.mess: Message Passing</a> and <a href="#Rconc-data-by-value">CP.31: prefer pass by value</a>.</p>
@@ -10716,7 +10760,7 @@ Application concepts are easier to reason about.</p>
     publisher.join();
 }
 </code></pre>
-<h5 id="note-238">Note</h5>
+<h5 id="note-239">Note</h5>
 <p>With the exception of <code>async()</code>, the standard-library facilities are low-level, machine-oriented, threads-and-lock level.
 This is a necessary foundation, but we have to try to raise the level of abstraction: for productivity, for reliability, and for performance.
 This is a potent argument for using higher level, more applications-oriented libraries (if possibly, built on top of standard-library facilities).</p>
@@ -10770,7 +10814,7 @@ Subtle concurrency errors can have dramatically bad effects, including memory co
 <h5 id="example-244">Example</h5>
 <pre><code>???
 </code></pre>
-<h5 id="note-239">Note</h5>
+<h5 id="note-240">Note</h5>
 <p>Thread safety is challenging, often getting the better of experienced programmers: tooling is an important strategy to mitigate those risks.
 There are many tools "out there", both commercial and open-source tools, both research and production tools.
 Unfortunately people's needs and constraints differ so dramatically that we cannot make specific recommendations,
@@ -10880,7 +10924,7 @@ scoped_lock&lt;mutex, mutex&gt; lck1(m1, m2);
 scoped_lock&lt;mutex, mutex&gt; lck2(m2, m1);
 </code></pre>
 <p>Here, the writers of <code>thread1</code> and <code>thread2</code> are still not agreeing on the order of the <code>mutex</code>es, but order no longer matters.</p>
-<h5 id="note-240">Note</h5>
+<h5 id="note-241">Note</h5>
 <p>In real code, <code>mutex</code>es are rarely named to conveniently remind the programmer of an intended relation and intended order of acquisition.
 In real code, <code>mutex</code>es are not always conveniently acquired on consecutive lines.</p>
 <p>In C++17 it's possible to write plain</p>
@@ -10990,11 +11034,11 @@ void some_fct(int* p)
 By "bad" we mean that a <code>thread</code> may use a pointer after the pointed-to object is destroyed.
 The fact that <code>thread</code>s run concurrently doesn't affect the lifetime or ownership issues here;
 these <code>thread</code>s can be seen as just a function object called from <code>some_fct</code>.</p>
-<h5 id="note-241">Note</h5>
+<h5 id="note-242">Note</h5>
 <p>Even objects with static storage duration can be problematic if used from detached threads: if the
 thread continues until the end of the program, it might be running concurrently with the destruction
 of objects with static storage duration, and thus accesses to such objects might race.</p>
-<h5 id="note-242">Note</h5>
+<h5 id="note-243">Note</h5>
 <p>This rule is redundant if you <a href="#Rconc-detached_thread">don't <code>detach()</code></a> and <a href="#Rconc-joining_thread">use <code>gsl::joining_thread</code></a>.
 However, converting code to follow those guidelines could be difficult and even impossible for third-party libraries.
 In such cases, the rule becomes essential for lifetime safety and type safety.</p>
@@ -11056,10 +11100,10 @@ void use(int n)
 </code></pre>
 <p>This seriously complicates lifetime analysis, and in not too unlikely cases makes lifetime analysis impossible.
 This implies that we cannot safely refer to local objects in <code>use()</code> from the thread or refer to local objects in the thread from <code>use()</code>.</p>
-<h5 id="note-243">Note</h5>
+<h5 id="note-244">Note</h5>
 <p>Make "immortal threads" globals, put them in an enclosing scope, or put them on the free store rather than <code>detach()</code>.
 <a href="#Rconc-detached_thread">don't <code>detach</code></a>.</p>
-<h5 id="note-244">Note</h5>
+<h5 id="note-245">Note</h5>
 <p>Because of old code and third party libraries using <code>std::thread</code> this rule can be hard to introduce.</p>
 <h5 id="enforcement-259">Enforcement</h5>
 <p>Flag uses of <code>std::thread</code>:</p>
@@ -11114,7 +11158,7 @@ void use()
 <h5 id="reason-281">Reason</h5>
 <p>Copying a small amount of data is cheaper to copy and access than to share it using some locking mechanism.
 Copying naturally gives unique ownership (simplifies code) and eliminates the possibility of data races.</p>
-<h5 id="note-245">Note</h5>
+<h5 id="note-246">Note</h5>
 <p>Defining "small amount" precisely is impossible.</p>
 <h5 id="example-252">Example</h5>
 <pre><code>string modify1(string);
@@ -11144,7 +11188,7 @@ safe way to ensure proper deletion.</p>
 <h5 id="example-253">Example</h5>
 <pre><code>???
 </code></pre>
-<h5 id="note-246">Note</h5>
+<h5 id="note-247">Note</h5>
 <ul>
 <li>A static object (e.g. a global) can be shared because it is not owned in the sense that some thread is responsible for it's deletion.</li>
 <li>An object on free store that is never to be deleted can be shared.</li>
@@ -11200,7 +11244,7 @@ void workers()  // set up worker threads (specifically 4 worker threads)
     joining_thread w4 {worker};
 }
 </code></pre>
-<h5 id="note-247">Note</h5>
+<h5 id="note-248">Note</h5>
 <p>If your system has a good thread pool, use it.
 If your system has a good message queue, use it.</p>
 <h5 id="enforcement-264">Enforcement</h5>
@@ -11366,7 +11410,7 @@ The is no explicit locking and both correct (value) return and error (exception)
 <h5 id="example-260">Example</h5>
 <pre><code>???
 </code></pre>
-<h5 id="note-248">Note</h5>
+<h5 id="note-249">Note</h5>
 <p>???</p>
 <h5 id="enforcement-269">Enforcement</h5>
 <p>???</p>
@@ -11377,7 +11421,7 @@ The is no explicit locking and both correct (value) return and error (exception)
 <h5 id="example-261">Example</h5>
 <pre><code>???
 </code></pre>
-<h5 id="note-249">Note</h5>
+<h5 id="note-250">Note</h5>
 <p>Unfortunately, <code>async()</code> is not perfect.
 For example, there is no guarantee that a thread pool is used to minimize thread construction.
 In fact, most current <code>async()</code> implementations don't.
@@ -11432,7 +11476,7 @@ It would be really hard to find through testing.
 Read up on the ABA problem.</p>
 <h5 id="exception-48">Exception</h5>
 <p><a href="#???">Atomic variables</a> can be used simply and safely, as long as you are using the sequentially consistent memory model (memory<em>order</em>seq_cst), which is the default.</p>
-<h5 id="note-250">Note</h5>
+<h5 id="note-251">Note</h5>
 <p>Higher-level concurrency mechanisms, such as <code>thread</code>s and <code>mutex</code>es are implemented using lock-free programming.</p>
 <p><strong>Alternative</strong>: Use lock-free data structures implemented by others as part of some library.</p>
 <h3 id="anamerconcdistrustacp101distrustyourhardwarecompilercombination"><a name="Rconc-distrust"></a>CP.101: Distrust your hardware/compiler combination</h3>
@@ -11440,7 +11484,7 @@ Read up on the ABA problem.</p>
 <p>The low-level hardware interfaces used by lock-free programming are among the hardest to implement well and among
 the areas where the most subtle portability problems occur.
 If you are doing lock-free programming for performance, you need to check for regressions.</p>
-<h5 id="note-251">Note</h5>
+<h5 id="note-252">Note</h5>
 <p>Instruction reordering (static and dynamic) makes it hard for us to think effectively at this level (especially if you use relaxed memory models).
 Experience, (semi)formal models and model checking can be useful.
 Testing - often to an extreme extent - is essential.
@@ -11514,7 +11558,7 @@ if (action_needed) {
     }
 }
 </code></pre>
-<h5 id="examplegood-20">Example, good</h5>
+<h5 id="examplegood-21">Example, good</h5>
 <pre><code>mutex action_mutex;
 atomic&lt;bool&gt; action_needed;
 
@@ -11560,7 +11604,7 @@ For example, reading <code>clock</code> twice will often yield two different val
 long t2 = clock;
 </code></pre>
 <p><code>clock</code> is <code>const</code> because the program should not try to write to <code>clock</code>.</p>
-<h5 id="note-252">Note</h5>
+<h5 id="note-253">Note</h5>
 <p>Unless you are writing the lowest level code manipulating hardware directly, consider <code>volatile</code> an esoteric feature that is best avoided.</p>
 <h5 id="example-264">Example</h5>
 <p>Usually C++ code receives <code>volatile</code> memory that is owned Elsewhere (hardware or another language):</p>
@@ -11585,7 +11629,7 @@ class My_type {
     // etc.
 };
 </code></pre>
-<h5 id="note-253">Note</h5>
+<h5 id="note-254">Note</h5>
 <p>In C++, unlike in some other languages, <code>volatile</code> has <a href="#Rconc-volatile">nothing to do with synchronization</a>.</p>
 <h5 id="enforcement-274">Enforcement</h5>
 <ul>
@@ -11669,7 +11713,7 @@ Note that there is no return value that could contain an error code.</p>
         throw runtime_error{"File_handle: could not open " + name + " as " + mode};
 }
 </code></pre>
-<h5 id="note-254">Note</h5>
+<h5 id="note-255">Note</h5>
 <p>It is often said that exceptions are meant to signal exceptional events and failures.
 However, that's a bit circular because "what is exceptional?"
 Examples:</p>
@@ -11681,13 +11725,13 @@ Examples:</p>
 </ul>
 <p>In contrast, termination of an ordinary loop is not exceptional.
 Unless the loop was meant to be infinite, termination is normal and expected.</p>
-<h5 id="note-255">Note</h5>
+<h5 id="note-256">Note</h5>
 <p>Don't use a <code>throw</code> as simply an alternative way of returning a value from a function.</p>
 <h5 id="exception-49">Exception</h5>
 <p>Some systems, such as hard-real-time systems require a guarantee that an action is taken in a (typically short) constant maximum time known before execution starts. Such systems can use exceptions only if there is tool support for accurately predicting the maximum time to recover from a <code>throw</code>.</p>
 <p><strong>See also</strong>: <a href="#Re-raii">RAII</a></p>
 <p><strong>See also</strong>: <a href="#Sd-noexcept">discussion</a></p>
-<h5 id="note-256">Note</h5>
+<h5 id="note-257">Note</h5>
 <p>Before deciding that you cannot afford or don't like exception-based error handling, have a look at the <a href="#Re-no-throw-raii">alternatives</a>;
 they have their own complexities and problems.
 Also, as far as possible, measure before making claims about efficiency.</p>
@@ -11716,7 +11760,7 @@ Look for exception values "leaked" out of <code>catch</code> clauses.</p>
 <h3 id="anameredesigninvariantsae4designyourerrorhandlingstrategyaroundinvariants"><a name="Re-design-invariants"></a>E.4: Design your error-handling strategy around invariants</h3>
 <h5 id="reason-300">Reason</h5>
 <p>To use an object it must be in a valid state (defined formally or informally by an invariant) and to recover from an error every object not destroyed must be in a valid state.</p>
-<h5 id="note-257">Note</h5>
+<h5 id="note-258">Note</h5>
 <p>An <a href="#Rc-struct">invariant</a> is logical condition for the members of an object that a constructor must establish for the public member functions to assume.</p>
 <h5 id="enforcement-276">Enforcement</h5>
 <p>???</p>
@@ -11798,10 +11842,10 @@ RAII ("Resource Acquisition Is Initialization") is the simplest, most systematic
 }
 </code></pre>
 <p>That's even simpler and safer, and often more efficient.</p>
-<h5 id="note-258">Note</h5>
+<h5 id="note-259">Note</h5>
 <p>If there is no obvious resource handle and for some reason defining a proper RAII object/handle is infeasible,
 as a last resort, cleanup actions can be represented by a <a href="#Re-finally"><code>final_action</code></a> object.</p>
-<h5 id="note-259">Note</h5>
+<h5 id="note-260">Note</h5>
 <p>But what do we do if we are writing a program where exceptions cannot be used?
 First challenge that assumption; there are many anti-exceptions myths around.
 We know of only a few good reasons:</p>
@@ -11858,7 +11902,7 @@ Prefer to use exceptions.</p>
 </code></pre>
 <p>Here, we know that <code>compute</code> will not throw because it is composed out of operations that don't throw.
 By declaring <code>compute</code> to be <code>noexcept</code>, we give the compiler and human readers information that can make it easier for them to understand and manipulate <code>compute</code>.</p>
-<h5 id="note-260">Note</h5>
+<h5 id="note-261">Note</h5>
 <p>Many standard-library functions are <code>noexcept</code> including all the standard-library functions "inherited" from the C Standard Library.</p>
 <h5 id="example-269">Example</h5>
 <pre><code>vector&lt;double&gt; munge(const vector&lt;double&gt;&amp; v) noexcept
@@ -11869,7 +11913,7 @@ By declaring <code>compute</code> to be <code>noexcept</code>, we give the compi
 </code></pre>
 <p>The <code>noexcept</code> here states that I am not willing or able to handle the situation where I cannot construct the local <code>vector</code>.
 That is, I consider memory exhaustion a serious design error (on par with hardware failures) so that I'm willing to crash the program if it happens.</p>
-<h5 id="note-261">Note</h5>
+<h5 id="note-262">Note</h5>
 <p>Do not use traditional <a href="#Re-specifications">exception-specifications</a>.</p>
 <h5 id="seealso-3">See also</h5>
 <p><a href="#Sd-noexcept">discussion</a>.</p>
@@ -11901,7 +11945,7 @@ That is, I consider memory exhaustion a serious design error (on par with hardwa
     // ...
 }
 </code></pre>
-<h5 id="note-262">Note</h5>
+<h5 id="note-263">Note</h5>
 <p>If you have local "things" that requires cleanup, but is not represented by an object with a destructor, such cleanup must
 also be done before a <code>throw</code>.
 Sometimes, <a href="#Re-finally"><code>finally()</code></a> can make such unsystematic cleanup a bit more manageable.</p>
@@ -11923,7 +11967,7 @@ void your_code()
         my_code();
         // ...
     }
-    catch(Bufferpool_exhausted) {
+    catch(const Bufferpool_exhausted&amp;) {
         // ...
     }
 }
@@ -11948,7 +11992,7 @@ void your_code()   // Don't
     }
 }
 </code></pre>
-<h5 id="note-263">Note</h5>
+<h5 id="note-264">Note</h5>
 <p>The standard-library classes derived from <code>exception</code> should be used only as base classes or for exceptions that require only "generic" handling. Like built-in types, their use could clash with other people's use of them.</p>
 <h5 id="exampledont-5">Example, don't</h5>
 <pre><code>void my_code()   // Don't
@@ -11965,7 +12009,7 @@ void your_code()   // Don't
         my_code();
         // ...
     }
-    catch(runtime_error) {   // runtime_error means "input buffer too small"
+    catch(const runtime_error&amp;) {   // runtime_error means "input buffer too small"
         // ...
     }
 }
@@ -11994,6 +12038,8 @@ void your_code()   // Don't
 <pre><code>catch (const exception&amp; e) { /* ... */ }
 </code></pre>
 <p>Most handlers do not modify their exception and in general we <a href="#Res-const">recommend use of <code>const</code></a>.</p>
+<h5 id="note-265">Note</h5>
+<p>To rethrow a caught exception use <code>throw;</code> not <code>throw e;</code>. Using <code>throw e;</code> would throw a new copy of <code>e</code> (sliced to the static type <code>std::exception</code>) instead of rethrowing the original exception of type <code>std::runtime_error</code>. (But keep <a href="https://github.com/isocpp/CppCoreGuidelines/blob/master/CppCoreGuidelines.md#Re-not-always">Don't try to catch every exception in every function</a> and <a href="https://github.com/isocpp/CppCoreGuidelines/blob/master/CppCoreGuidelines.md#Re-catch">Minimize the use of explicit <code>try</code>/<code>catch</code></a> in mind.)</p>
 <h5 id="enforcement-280">Enforcement</h5>
 <p>Flag by-value exceptions if their types are part of a hierarchy (could require whole-program analysis to be perfect).</p>
 <h3 id="anamereneverfailae16destructorsdeallocationandswapmustneverfail"><a name="Re-never-fail"></a>E.16: Destructors, deallocation, and <code>swap</code> must never fail</h3>
@@ -12010,16 +12056,16 @@ public:
     }
 };
 </code></pre>
-<h5 id="note-264">Note</h5>
+<h5 id="note-266">Note</h5>
 <p>Many have tried to write reliable code violating this rule for examples, such as a network connection that "refuses to close".
 To the best of our knowledge nobody has found a general way of doing this.
 Occasionally, for very specific examples, you can get away with setting some state for future cleanup.
 For example, we might put a socket that does not want to close on a "bad socket" list,
 to be examined by a regular sweep of the system state.
 Every example we have seen of this is error-prone, specialized, and often buggy.</p>
-<h5 id="note-265">Note</h5>
+<h5 id="note-267">Note</h5>
 <p>The standard library assumes that destructors, deallocation functions (e.g., <code>operator delete</code>), and <code>swap</code> do not throw. If they do, basic standard-library invariants are broken.</p>
-<h5 id="note-266">Note</h5>
+<h5 id="note-268">Note</h5>
 <p>Deallocation functions, including <code>operator delete</code>, must be <code>noexcept</code>. <code>swap</code> functions must be <code>noexcept</code>.
 Most destructors are implicitly <code>noexcept</code> by default.
 Also, <a href="#Rc-move-noexcept">make move operations <code>noexcept</code></a>.</p>
@@ -12096,11 +12142,11 @@ Better:</p>
     // ...
 }
 </code></pre>
-<h5 id="note-267">Note</h5>
+<h5 id="note-269">Note</h5>
 <p><code>finally</code> is not as messy as <code>try</code>/<code>catch</code>, but it is still ad-hoc.
 Prefer <a href="#Re-raii">proper resource management objects</a>.
 Consider <code>finally</code> a last resort.</p>
-<h5 id="note-268">Note</h5>
+<h5 id="note-270">Note</h5>
 <p>Use of <code>finally</code> is a systematic and reasonably clean alternative to the old <a href="#Re-no-throw-codes"><code>goto exit;</code> technique</a>
 for dealing with cleanup where resource management is not systematic.</p>
 <h5 id="enforcement-284">Enforcement</h5>
@@ -12108,7 +12154,7 @@ for dealing with cleanup where resource management is not systematic.</p>
 <h3 id="anamerenothrowraiiae25ifyoucantthrowexceptionssimulateraiiforresourcemanagement"><a name="Re-no-throw-raii"></a>E.25: If you can't throw exceptions, simulate RAII for resource management</h3>
 <h5 id="reason-313">Reason</h5>
 <p>Even without exceptions, <a href="#Re-raii">RAII</a> is usually the best and most systematic way of dealing with resources.</p>
-<h5 id="note-269">Note</h5>
+<h5 id="note-271">Note</h5>
 <p>Error handling using exceptions is the only complete and systematic way of handling non-local errors in C++.
 In particular, non-intrusively signaling failure to construct an object requires an exception.
 Signaling errors in a way that cannot be ignored requires exceptions.
@@ -12155,7 +12201,7 @@ If we cannot throw an exception, we can simulate this RAII style of resource han
 <h5 id="reason-314">Reason</h5>
 <p>If you can't do a good job at recovering, at least you can get out before too much consequential damage is done.</p>
 <p><strong>See also</strong>: <a href="#Re-no-throw-raii">Simulating RAII</a></p>
-<h5 id="note-270">Note</h5>
+<h5 id="note-272">Note</h5>
 <p>If you cannot be systematic about error handling, consider "crashing" as a response to any error that cannot be handled locally.
 That is, if you cannot recover from an error in the context of the function that detected it, call <code>abort()</code>, <code>quick_exit()</code>,
 or a similar function that will trigger some sort of system restart.</p>
@@ -12186,7 +12232,7 @@ In such cases, "crashing" is simply leaving error handling to the next level of 
 <h5 id="reason-315">Reason</h5>
 <p>Systematic use of any error-handling strategy minimizes the chance of forgetting to handle an error.</p>
 <p><strong>See also</strong>: <a href="#Re-no-throw-raii">Simulating RAII</a></p>
-<h5 id="note-271">Note</h5>
+<h5 id="note-273">Note</h5>
 <p>There are several issues to be addressed:</p>
 <ul>
 <li>how do you transmit an error indicator from out of a function?</li>
@@ -12327,7 +12373,7 @@ When did you last test the return value of <code>printf()</code>?</p>
 <h5 id="examplebad-121">Example, bad</h5>
 <pre><code>???
 </code></pre>
-<h5 id="note-272">Note</h5>
+<h5 id="note-274">Note</h5>
 <p>C-style error handling is based on the global variable <code>errno</code>, so it is essentially impossible to avoid this style completely.</p>
 <h5 id="enforcement-288">Enforcement</h5>
 <p>Awkward.</p>
@@ -12357,10 +12403,10 @@ Note that changes to the set of exceptions often happens at the lowest level of 
 In a large code base, this could mean that nobody could update to a new version of a library until the last user was modified.
 If <code>use()</code> is part of a library, it may not be possible to update it because a change could affect unknown clients.</p>
 <p>The policy of letting exceptions propagate until they reach a function that potentially can handle it has proven itself over the years.</p>
-<h5 id="note-273">Note</h5>
+<h5 id="note-275">Note</h5>
 <p>No. This would not be any better had exception specifications been statically enforced.
 For example, see <a href="#Stroustrup94">Stroustrup94</a>.</p>
-<h5 id="note-274">Note</h5>
+<h5 id="note-276">Note</h5>
 <p>If no exception may be thrown, use <a href="#Re-noexcept"><code>noexcept</code></a> or its equivalent <code>throw()</code>.</p>
 <h5 id="enforcement-289">Enforcement</h5>
 <p>Flag every exception specification.</p>
@@ -12432,12 +12478,12 @@ void f(const Point&amp; pt) {
     int x = pt.getx();          // ERROR, doesn't compile because getx was not marked const
 }
 </code></pre>
-<h5 id="note-275">Note</h5>
+<h5 id="note-277">Note</h5>
 <p>It is not inherently bad to pass a pointer or reference to non-<code>const</code>,
 but that should be done only when the called function is supposed to modify the object.
 A reader of code must assume that a function that takes a "plain" <code>T*</code> or <code>T&amp;</code> will modify the object referred to.
 If it doesn't now, it might do so later without forcing recompilation.</p>
-<h5 id="note-276">Note</h5>
+<h5 id="note-278">Note</h5>
 <p>There are code/libraries that are offer functions that declare a<code>T*</code> even though
 those function do not modify that <code>T</code>.
 This is a problem for people modernizing code.
@@ -12453,7 +12499,7 @@ void f(const int* p) { f(const_cast&lt;int*&gt;(p)); } // wrapper
 </code></pre>
 <p>Note that this wrapper solution is a patch that should be used only when the declaration of <code>f()</code> cannot be be modified,
 e.g. because it is in a library that you cannot modify.</p>
-<h5 id="note-277">Note</h5>
+<h5 id="note-279">Note</h5>
 <p>A <code>const</code> member function can modify the value of an object that is <code>mutable</code> or accessed through a pointer member.
 A common use is to maintain a cache rather than repeatedly do a complicated computation.
 For example, here is a <code>Date</code> that caches (mnemonizes) its string representation to simplify repeated uses:</p>
@@ -12490,10 +12536,10 @@ it offers to its users.</p>
 <pre><code>void f(char* p);        // does f modify *p? (assume it does)
 void g(const char* p);  // g does not modify *p
 </code></pre>
-<h5 id="note-278">Note</h5>
+<h5 id="note-280">Note</h5>
 <p>It is not inherently bad to pass a pointer or reference to non-<code>const</code>,
 but that should be done only when the called function is supposed to modify the object.</p>
-<h5 id="note-279">Note</h5>
+<h5 id="note-281">Note</h5>
 <p><a href="#Res-casts-const">Do not cast away <code>const</code></a>.</p>
 <h5 id="enforcement-293">Enforcement</h5>
 <ul>
@@ -12528,7 +12574,7 @@ but that should be done only when the called function is supposed to modify the 
 const double y = f(2);      // possible run-time evaluation
 constexpr double z = f(2);  // error unless f(2) can be evaluated at compile time
 </code></pre>
-<h5 id="note-280">Note</h5>
+<h5 id="note-282">Note</h5>
 <p>See F.4.</p>
 <h5 id="enforcement-295">Enforcement</h5>
 <ul>
@@ -12673,14 +12719,14 @@ T sum(vector&lt;T&gt;&amp; v, T s)
 That is not a minimal requirement, but it gives the implementer of algorithms much needed freedom and ensures that any <code>Arithmetic</code> type
 can be used for a wide variety of algorithms.</p>
 <p>For additional generality and reusability, we could also use a more general <code>Container</code> or <code>Range</code> concept instead of committing to only one container, <code>vector</code>.</p>
-<h5 id="note-281">Note</h5>
+<h5 id="note-283">Note</h5>
 <p>If we define a template to require exactly the operations required for a single implementation of a single algorithm
 (e.g., requiring just <code>+=</code> rather than also <code>=</code> and <code>+</code>) and only those, we have overconstrained maintainers.
 We aim to minimize requirements on template arguments, but the absolutely minimal requirements of an implementation is rarely a meaningful concept.</p>
-<h5 id="note-282">Note</h5>
+<h5 id="note-284">Note</h5>
 <p>Templates can be used to express essentially everything (they are Turing complete), but the aim of generic programming (as expressed using templates)
 is to efficiently generalize operations/algorithms over a set of types with similar semantic properties.</p>
-<h5 id="note-283">Note</h5>
+<h5 id="note-285">Note</h5>
 <p>The <code>requires</code> in the comments are uses of <code>concepts</code>.
 "Concepts" are defined in an ISO Technical specification: <a href="http://www.open-std.org/jtc1/sc22/wg21/docs/papers/2015/n4553.pdf">concepts</a>.
 Concepts are supported in GCC 6.1 and later.
@@ -12704,7 +12750,7 @@ Iter find(Iter b, Iter e, Val v)
     // ...
 }
 </code></pre>
-<h5 id="note-284">Note</h5>
+<h5 id="note-286">Note</h5>
 <p>Don't use a template unless you have a realistic need for more than one template argument type.
 Don't overabstract.</p>
 <h5 id="enforcement-297">Enforcement</h5>
@@ -12768,7 +12814,7 @@ class ConcreteCommand : public Command {
 <h5 id="example-290">Example</h5>
 <p>Dynamic helps static: Offer a generic, comfortable, statically bound interface, but internally dispatch dynamically, so you offer a uniform object layout.
 Examples include type erasure as with <code>std::shared_ptr</code>'s deleter (but <a href="#Rt-erasure">don't overuse type erasure</a>).</p>
-<h5 id="note-285">Note</h5>
+<h5 id="note-287">Note</h5>
 <p>In a class template, nonvirtual functions are only instantiated if they're used -- but virtual functions are instantiated every time.
 This can bloat code size, and may overconstrain a generic type by instantiating functionality that is never needed.
 Avoid this, even though the standard-library facets made this mistake.</p>
@@ -12829,7 +12875,7 @@ Iter find(Iter b, Iter e, Val v)
     // ...
 }
 </code></pre>
-<h5 id="note-286">Note</h5>
+<h5 id="note-288">Note</h5>
 <p>"Concepts" are defined in an ISO Technical specification: <a href="http://www.open-std.org/jtc1/sc22/wg21/docs/papers/2015/n4553.pdf">concepts</a>.
 A draft of a set of standard-library concepts can be found in another ISO TS: <a href="http://www.open-std.org/jtc1/sc22/wg21/docs/papers/2016/n4569.pdf">ranges</a>
 Concepts are supported in GCC 6.1 and later.
@@ -12843,7 +12889,7 @@ Iter find(Iter b, Iter e, Val v)
     // ...
 }
 </code></pre>
-<h5 id="note-287">Note</h5>
+<h5 id="note-289">Note</h5>
 <p>Plain <code>typename</code> (or <code>auto</code>) is the least constraining concept.
 It should be used only rarely when nothing more than "it's a type" can be assumed.
 This is typically only needed when (as part of template metaprogramming code) we manipulate pure expression trees, postponing type checking.</p>
@@ -12854,7 +12900,7 @@ This is typically only needed when (as part of template metaprogramming code) we
 <h5 id="reason-330">Reason</h5>
 <p>"Standard" concepts (as provided by the <a href="#S-GSL">GSL</a> and the <a href="http://www.open-std.org/jtc1/sc22/wg21/docs/papers/2016/n4569.pdf">Ranges TS</a>, and hopefully soon the ISO standard itself)
 saves us the work of thinking up our own concepts, are better thought out than we can manage to do in a hurry, and improves interoperability.</p>
-<h5 id="note-288">Note</h5>
+<h5 id="note-290">Note</h5>
 <p>Unless you are creating a new generic library, most of the concepts you need will already be defined by the standard library.</p>
 <h5 id="exampleusingtsconcepts">Example (using TS concepts)</h5>
 <pre><code>template&lt;typename T&gt;
@@ -12868,9 +12914,9 @@ Is it better? Is it right? Does it accurately reflect the standard's requirement
 It is better and simpler just to use <code>Sortable</code>:</p>
 <pre><code>void sort(Sortable&amp; s);   // better
 </code></pre>
-<h5 id="note-289">Note</h5>
+<h5 id="note-291">Note</h5>
 <p>The set of "standard" concepts is evolving as we approach an ISO standard including concepts.</p>
-<h5 id="note-290">Note</h5>
+<h5 id="note-292">Note</h5>
 <p>Designing a useful concept is challenging.</p>
 <h5 id="enforcement-301">Enforcement</h5>
 <p>Hard.</p>
@@ -12905,7 +12951,7 @@ void sort(T&amp;);             // which is Sortable"
 void sort(Sortable&amp;);      // Best (assuming support for concepts): "The parameter is Sortable"
 </code></pre>
 <p>The shorter versions better match the way we speak. Note that many templates don't need to use the <code>template</code> keyword.</p>
-<h5 id="note-291">Note</h5>
+<h5 id="note-293">Note</h5>
 <p>"Concepts" are defined in an ISO Technical specification: <a href="http://www.open-std.org/jtc1/sc22/wg21/docs/papers/2015/n4553.pdf">concepts</a>.
 A draft of a set of standard-library concepts can be found in another ISO TS: <a href="http://www.open-std.org/jtc1/sc22/wg21/docs/papers/2016/n4569.pdf">ranges</a>
 Concepts are supported in GCC 6.1 and later.
@@ -12948,7 +12994,7 @@ auto zz = algo(xx, yy);   // zz = "79"
 </code></pre>
 <p>Maybe the concatenation was expected. More likely, it was an accident. Defining minus equivalently would give dramatically different sets of accepted types.
 This <code>Addable</code> violates the mathematical rule that addition is supposed to be commutative: <code>a+b == b+a</code>.</p>
-<h5 id="note-292">Note</h5>
+<h5 id="note-294">Note</h5>
 <p>The ability to specify a meaningful semantics is a defining characteristic of a true concept, as opposed to a syntactic constraint.</p>
 <h5 id="exampleusingtsconcepts-3">Example (using TS concepts)</h5>
 <pre><code>template&lt;typename T&gt;
@@ -12972,7 +13018,7 @@ string xx = "7";
 string yy = "9";
 auto zz = algo(xx, yy);   // error: string is not a Number
 </code></pre>
-<h5 id="note-293">Note</h5>
+<h5 id="note-295">Note</h5>
 <p>Concepts with multiple operations have far lower chance of accidentally matching a type than a single-operation concept.</p>
 <h5 id="enforcement-304">Enforcement</h5>
 <ul>
@@ -12984,7 +13030,7 @@ auto zz = algo(xx, yy);   // error: string is not a Number
 <p>Ease of comprehension.
 Improved interoperability.
 Helps implementers and maintainers.</p>
-<h5 id="note-294">Note</h5>
+<h5 id="note-296">Note</h5>
 <p>This is a specific variant of the general rule that <a href="#Rt-low">a concept must make semantic sense</a>.</p>
 <h5 id="examplebadusingtsconcepts-1">Example, bad (using TS concepts)</h5>
 <pre><code>template&lt;typename T&gt; concept Subtractable = requires(T a, T, b) { a-b; };
@@ -12996,7 +13042,7 @@ You need at least <code>+</code> to make <code>-</code> meaningful and useful.</
 <li><code>Arithmetic</code>: <code>+</code>, <code>-</code>, <code>*</code>, <code>/</code>, <code>+=</code>, <code>-=</code>, <code>*=</code>, <code>/=</code></li>
 <li><code>Comparable</code>: <code>&lt;</code>, <code>&gt;</code>, <code>&lt;=</code>, <code>&gt;=</code>, <code>==</code>, <code>!=</code></li>
 </ul>
-<h5 id="note-295">Note</h5>
+<h5 id="note-297">Note</h5>
 <p>This rule applies whether we use direct language support for concepts or not.
 It is a general design rule that even applies to non-templates:</p>
 <pre><code>class Minimal {
@@ -13071,16 +13117,16 @@ Specifying semantics is a powerful design tool.</p>
         {a / b} -&gt; T;
     }
 </code></pre>
-<h5 id="note-296">Note</h5>
+<h5 id="note-298">Note</h5>
 <p>This is an axiom in the mathematical sense: something that may be assumed without proof.
 In general, axioms are not provable, and when they are the proof is often beyond the capability of a compiler.
 An axiom may not be general, but the template writer may assume that it holds for all inputs actually used (similar to a precondition).</p>
-<h5 id="note-297">Note</h5>
+<h5 id="note-299">Note</h5>
 <p>In this context axioms are Boolean expressions.
 See the <a href="#S-references">Palo Alto TR</a> for examples.
 Currently, C++ does not support axioms (even the ISO Concepts TS), so we have to make do with comments for a longish while.
 Once language support is available, the <code>//</code> in front of the axiom can be removed</p>
-<h5 id="note-298">Note</h5>
+<h5 id="note-300">Note</h5>
 <p>The GSL concepts have well-defined semantics; see the Palo Alto TR and the Ranges TS.</p>
 <h5 id="exceptionusingtsconcepts">Exception (using TS concepts)</h5>
 <p>Early versions of a new "concept" still under development will often just define simple sets of constraints without a well-specified semantics.
@@ -13142,7 +13188,7 @@ template&lt;typename I&gt;
 concept bool Contiguous_iter = RA_iter&lt;I&gt; &amp;&amp; Contiguous&lt;I&gt;;
 </code></pre>
 <p>The programmer (in a library) must define <code>is_contiguous</code> (a trait) appropriately.</p>
-<h5 id="note-299">Note</h5>
+<h5 id="note-301">Note</h5>
 <p>Traits can be trait classes or type traits.
 These can be user-defined or standard-library ones.
 Prefer the standard-library ones.</p>
@@ -13180,7 +13226,7 @@ version of <code>f()</code>, then delete it.</p>
 void f() = delete;
 </code></pre>
 <p>The compiler will select the overload and emit an appropriate error.</p>
-<h5 id="note-300">Note</h5>
+<h5 id="note-302">Note</h5>
 <p>Complementary constraints are unfortunately common in <code>enable_if</code> code:</p>
 <pre><code>template&lt;typename T&gt;
 enable_if&lt;!C&lt;T&gt;, void&gt;   // bad
@@ -13190,7 +13236,7 @@ template&lt;typename T&gt;
 enable_if&lt;C&lt;T&gt;, void&gt;
 f();
 </code></pre>
-<h5 id="note-301">Note</h5>
+<h5 id="note-303">Note</h5>
 <p>Complementary requirements on one requirements is sometimes (wrongly) considered manageable.
 However, for two or more requirements the number of definitions needs can go up exponentially (2,4,9,16,…):</p>
 <pre><code>C1&lt;T&gt; &amp;&amp; C2&lt;T&gt;
@@ -13248,9 +13294,9 @@ auto z = find_if(v, Greater_than&lt;double&gt;(7));        // function object: c
 <pre><code>auto y1 = find_if(v, [](Ordered x) { return x &gt; 7; }); // require an ordered type
 auto z1 = find_if(v, [](auto x) { return x &gt; 7; });    // hope that the type has a &gt;
 </code></pre>
-<h5 id="note-302">Note</h5>
+<h5 id="note-304">Note</h5>
 <p>Lambdas generate function objects.</p>
-<h5 id="note-303">Note</h5>
+<h5 id="note-305">Note</h5>
 <p>The performance argument depends on compiler and optimizer technology.</p>
 <h5 id="enforcement-311">Enforcement</h5>
 <ul>
@@ -13281,7 +13327,7 @@ void sort(S&amp; s)  // sort sequence s
 </code></pre>
 <p>After all, there is nothing in <code>Sortable</code> that requires <code>iostream</code> support.
 On the other hand, there is nothing in the fundamental idea of sorting that says anything about debugging.</p>
-<h5 id="note-304">Note</h5>
+<h5 id="note-306">Note</h5>
 <p>If we require every operation used to be listed among the requirements, the interface becomes unstable:
 Every time we change the debug facilities, the usage data gathering, testing support, error reporting, etc.
 The definition of the template would need change and every use of the template would have to be recompiled.
@@ -13292,7 +13338,7 @@ we may get a late compile-time error.</p>
 we delay checking until instantiation time.
 We consider this a worthwhile tradeoff.</p>
 <p>Note that using non-local, non-dependent names (such as <code>debug</code> and <code>cerr</code>) also introduces context dependencies that may lead to "mysterious" errors.</p>
-<h5 id="note-305">Note</h5>
+<h5 id="note-307">Note</h5>
 <p>It can be hard to decide which properties of a type is essential and which are not.</p>
 <h5 id="enforcement-312">Enforcement</h5>
 <p>???</p>
@@ -13332,7 +13378,7 @@ void user2(T&amp; c)
     // ...
 }
 </code></pre>
-<h5 id="note-306">Note</h5>
+<h5 id="note-308">Note</h5>
 <p>A simple, common use could be expressed: "Wrap traits!"</p>
 <h5 id="enforcement-313">Enforcement</h5>
 <ul>
@@ -13367,14 +13413,14 @@ using PFT2 = int (*)(T);   // OK
 auto t2 = make_tuple(1, "Ophelia"s, 3.14);         // better; deduced type
 </code></pre>
 <p>Note the use of the <code>s</code> suffix to ensure that the string is a <code>std::string</code>, rather than a C-style string.</p>
-<h5 id="note-307">Note</h5>
+<h5 id="note-309">Note</h5>
 <p>Since you can trivially write a <code>make_T</code> function, so could the compiler. Thus, <code>make_T</code> functions may become redundant in the future.</p>
 <h5 id="exception-51">Exception</h5>
 <p>Sometimes there isn't a good way of getting the template arguments deduced and sometimes, you want to specify the arguments explicitly:</p>
 <pre><code>vector&lt;double&gt; v = { 1, 2, 3, 7.9, 15.99 };
 list&lt;Record*&gt; lst;
 </code></pre>
-<h5 id="note-308">Note</h5>
+<h5 id="note-310">Note</h5>
 <p>Note that C++17 will make this rule redundant by allowing the template arguments to be deduced directly from constructor arguments:
 <a href="http://www.open-std.org/jtc1/sc22/wg21/docs/papers/2016/p0091r1.html">Template parameter deduction for constructors (Rev. 3)</a>.
 For example:</p>
@@ -13404,7 +13450,7 @@ X x {1};    // fine
 X y = x;      // fine
 std::vector&lt;X&gt; v(10); // error: no default constructor
 </code></pre>
-<h5 id="note-309">Note</h5>
+<h5 id="note-311">Note</h5>
 <p>Semiregular requires default constructible.</p>
 <h5 id="enforcement-316">Enforcement</h5>
 <ul>
@@ -13439,11 +13485,11 @@ namespace T0 {
 The problem is that <code>v.size()</code> returns an <code>unsigned</code> integer so that a conversion is needed to call the local <code>==</code>;
 the <code>==</code> in <code>Bad</code> requires no conversions.
 Realistic types, such as the standard-library iterators can be made to exhibit similar anti-social tendencies.</p>
-<h5 id="note-310">Note</h5>
+<h5 id="note-312">Note</h5>
 <p>If an unconstrained template is defined in the same namespace as a type,
 that unconstrained template can be found by ADL (as happened in the example).
 That is, it is highly visible.</p>
-<h5 id="note-311">Note</h5>
+<h5 id="note-313">Note</h5>
 <p>This rule should not be necessary, but the committee cannot agree to exclude unconstrained templated from ADL.</p>
 <p>Unfortunately this will get many false positives; the standard library violates this widely, by putting many unconstrained templates and types into the single namespace <code>std</code>.</p>
 <h5 id="enforcement-317">Enforcement</h5>
@@ -13455,7 +13501,7 @@ That is, it is highly visible.</p>
 <h5 id="example-299">Example</h5>
 <pre><code>enable_if&lt;???&gt;
 </code></pre>
-<h5 id="note-312">Note</h5>
+<h5 id="note-314">Note</h5>
 <p>Beware of [complementary constraints](# T.25).
 Faking concept overloading using <code>enable_if</code> sometimes forces us to use that error-prone design technique.</p>
 <h5 id="enforcement-318">Enforcement</h5>
@@ -13469,7 +13515,7 @@ Faking concept overloading using <code>enable_if</code> sometimes forces us to u
 <p><strong>Exceptions</strong>: Type erasure is sometimes appropriate, such as for <code>std::function</code>.</p>
 <h5 id="enforcement-319">Enforcement</h5>
 <p>???</p>
-<h5 id="note-313">Note</h5>
+<h5 id="note-315">Note</h5>
 <h2 id="anamesstempdefatdeftemplatedefinitions"><a name="SS-temp-def"></a>T.def: Template definitions</h2>
 <p>A template definition (class or function) can contain arbitrary code, so only a comprehensive review of C++ programming techniques would cover this topic.
 However, this section focuses on what is specific to template implementation.
@@ -13496,9 +13542,9 @@ Iter algo(Iter first, Iter last) {
     }
 }
 </code></pre>
-<h5 id="note-314">Note</h5>
+<h5 id="note-316">Note</h5>
 <p>Templates typically appear in header files so their context dependencies are more vulnerable to <code>#include</code> order dependencies than functions in <code>.cpp</code> files.</p>
-<h5 id="note-315">Note</h5>
+<h5 id="note-317">Note</h5>
 <p>Having a template operate only on its arguments would be one way of reducing the number of dependencies to a minimum, but that would generally be unmanageable.
 For example, an algorithm usually uses other algorithms and invoke operations that does not exclusively operate on arguments.
 And don't get us started on macros!</p>
@@ -13588,7 +13634,7 @@ public:
     // ...
 };
 </code></pre>
-<h5 id="note-316">Note</h5>
+<h5 id="note-318">Note</h5>
 <p>A more general version of this rule would be
 "If a template class member depends on only N template parameters out of M, place it in a base class with only N parameters."
 For N == 1, we have a choice of a base class of a class in the surrounding scope as in <a href="#Rt-scary">T.61</a>.</p>
@@ -13606,7 +13652,7 @@ Specialization offers a powerful mechanism for providing alternative implementat
 
 ??? representation specialization ?
 </code></pre>
-<h5 id="note-317">Note</h5>
+<h5 id="note-319">Note</h5>
 <p>???</p>
 <h5 id="enforcement-323">Enforcement</h5>
 <p>???</p>
@@ -13651,7 +13697,7 @@ void use(vector&lt;int&gt;&amp; vi, vector&lt;int&gt;&amp; vi2, vector&lt;string
 }
 </code></pre>
 <p>This is a general and powerful technique for compile-time algorithm selection.</p>
-<h5 id="note-318">Note</h5>
+<h5 id="note-320">Note</h5>
 <p>When <code>concept</code>s become widely available such alternatives can be distinguished directly:</p>
 <pre><code>template&lt;class Iter&gt;
     requires Pod&lt;Value_type&lt;iter&gt;&gt;
@@ -13728,7 +13774,7 @@ void test3(T t)
 <p>A trait is usually a type alias to compute a type,
 a <code>constexpr</code> function to compute a value,
 or a traditional traits template to be specialized on the user's type.</p>
-<h5 id="note-319">Note</h5>
+<h5 id="note-321">Note</h5>
 <p>If you intend to call your own helper function <code>helper(t)</code> with a value <code>t</code> that depends on a template type parameter,
 put it in a <code>::detail</code> namespace and qualify the call as <code>detail::helper(t);</code>.
 An unqualified call becomes a customization point where any function <code>helper</code> in the namespace of <code>t</code>'s type can be invoked;
@@ -13767,7 +13813,7 @@ vector&lt;string&gt; vs;
 Similar for <code>vector&lt;string&gt;::sort()</code>.
 Unless those two functions are called that's code bloat.
 Imagine what this would do to a class hierarchy with dozens of member functions and dozens of derived classes with many instantiations.</p>
-<h5 id="note-320">Note</h5>
+<h5 id="note-322">Note</h5>
 <p>In many cases you can provide a stable interface by not parameterizing a base;
 see <a href="#Rt-abi">"stable base"</a> and <a href="#Rt-generic-oo">OO and GP</a></p>
 <h5 id="enforcement-328">Enforcement</h5>
@@ -13782,7 +13828,7 @@ see <a href="#Rt-abi">"stable base"</a> and <a href="#Rt-generic-oo">OO and GP</
 <pre><code>void maul(Fruit* p)
 {
     *p = Pear{};     // put a Pear into *p
-    p[1] = Pear{};   // put a Pear into p[2]
+    p[1] = Pear{};   // put a Pear into p[1]
 }
 
 Apple aa [] = { an_apple, another_apple };   // aa contains Apples (obviously!)
@@ -13795,7 +13841,7 @@ Apple&amp; a1 = &amp;aa[1];   // a Pear?
 If <code>sizeof(Apple) != sizeof(Pear)</code> the access to <code>aa[1]</code> will not be aligned to the proper start of an object in the array.
 We have a type violation and possibly (probably) a memory corruption.
 Never write such code.</p>
-<p>Note that <code>maul()</code> violates the a <code>T*</code> points to an individual object <a href="#???">Rule</a>.</p>
+<p>Note that <code>maul()</code> violates the a <a href="#Rf-ptr"><code>T*</code> points to an individual object rule</a>.</p>
 <p><strong>Alternative</strong>: Use a proper (templatized) container:</p>
 <pre><code>void maul2(Fruit* p)
 {
@@ -13809,7 +13855,7 @@ maul2(&amp;va[0]);   // you asked for it
 
 Apple&amp; a0 = &amp;va[0];   // a Pear?
 </code></pre>
-<p>Note that the assignment in <code>maul2()</code> violated the no-slicing <a href="#???">Rule</a>.</p>
+<p>Note that the assignment in <code>maul2()</code> violated the <a href="#Res-slice">no-slicing rule</a>.</p>
 <h5 id="enforcement-329">Enforcement</h5>
 <ul>
 <li>Detect this horror!</li>
@@ -13834,7 +13880,7 @@ And in general, implementations must deal with dynamic linking.</p>
     virtual bool intersect(T* p);   // error: template cannot be virtual
 };
 </code></pre>
-<h5 id="note-321">Note</h5>
+<h5 id="note-323">Note</h5>
 <p>We need a rule because people keep asking about this</p>
 <h5 id="alternative-11">Alternative</h5>
 <p>Double dispatch, visitors, calculate which function to call</p>
@@ -13924,7 +13970,7 @@ The syntax and techniques needed are pretty horrendous.</p>
 <h3 id="anamertmetametaat120usetemplatemetaprogrammingonlywhenyoureallyneedto"><a name="Rt-metameta"></a>T.120: Use template metaprogramming only when you really need to</h3>
 <h5 id="reason-366">Reason</h5>
 <p>Template metaprogramming is hard to get right, slows down compilation, and is often very hard to maintain.
-However, there are real-world examples where template metaprogramming provides better performance that any alternative short of expert-level assembly code.
+However, there are real-world examples where template metaprogramming provides better performance than any alternative short of expert-level assembly code.
 Also, there are real-world examples where template metaprogramming expresses the fundamental ideas better than run-time code.
 For example, if you really need AST manipulation at compile time (e.g., for optional matrix operation folding) there may be no other way in C++.</p>
 <h5 id="examplebad-127">Example, bad</h5>
@@ -13938,7 +13984,7 @@ For example, if you really need AST manipulation at compile time (e.g., for opti
 <pre><code>??? good
 </code></pre>
 <p><strong>Alternative</strong>: If the result is a value, rather than a type, use a <a href="#Rt-fct"><code>constexpr</code> function</a>.</p>
-<h5 id="note-322">Note</h5>
+<h5 id="note-324">Note</h5>
 <p>If you feel the need to hide your template metaprogramming in macros, you have probably gone too far.</p>
 <h3 id="anamertemulateat121usetemplatemetaprogrammingprimarilytoemulateconcepts"><a name="Rt-emulate"></a>T.121: Use template metaprogramming primarily to emulate concepts</h3>
 <h5 id="reason-367">Reason</h5>
@@ -13953,7 +13999,7 @@ template&lt;typename Iter&gt;
     /*requires*/ enable_if&lt;forward_iterator&lt;Iter&gt;, void&gt;
 advance(Iter p, int n) { assert(n &gt;= 0); while (n--) ++p;}
 </code></pre>
-<h5 id="note-323">Note</h5>
+<h5 id="note-325">Note</h5>
 <p>Such code is much simpler using concepts:</p>
 <pre><code>void advance(RandomAccessIterator p, int n) { p += n; }
 
@@ -13964,7 +14010,7 @@ void advance(ForwardIterator p, int n) { assert(n &gt;= 0); while (n--) ++p;}
 <h3 id="anamerttmpat122usetemplatesusuallytemplatealiasestocomputetypesatcompiletime"><a name="Rt-tmp"></a>T.122: Use templates (usually template aliases) to compute types at compile time</h3>
 <h5 id="reason-368">Reason</h5>
 <p>Template metaprogramming is the only directly supported and half-way principled way of generating types at compile time.</p>
-<h5 id="note-324">Note</h5>
+<h5 id="note-326">Note</h5>
 <p>"Traits" techniques are mostly replaced by template aliases to compute types and <code>constexpr</code> functions to compute values.</p>
 <h5 id="example-317">Example</h5>
 <pre><code>??? big object / small object optimization
@@ -13975,7 +14021,7 @@ void advance(ForwardIterator p, int n) { assert(n &gt;= 0); while (n--) ++p;}
 <h5 id="reason-369">Reason</h5>
 <p>A function is the most obvious and conventional way of expressing the computation of a value.
 Often a <code>constexpr</code> function implies less compile-time overhead than alternatives.</p>
-<h5 id="note-325">Note</h5>
+<h5 id="note-327">Note</h5>
 <p>"Traits" techniques are mostly replaced by template aliases to compute types and <code>constexpr</code> functions to compute values.</p>
 <h5 id="example-318">Example</h5>
 <pre><code>template&lt;typename T&gt;
@@ -14056,7 +14102,7 @@ auto x = find_if(vr.begin(), vr.end(),
     [](const Rec&amp; r) { return cmp_to_n(r.name); }
 );
 </code></pre>
-<h5 id="note-326">Note</h5>
+<h5 id="note-328">Note</h5>
 <p>whether functions, lambdas, or operators.</p>
 <h5 id="exception-52">Exception</h5>
 <ul>
@@ -14253,6 +14299,7 @@ Use header files to represent interfaces and to emphasize logical structure.</p>
 <li><p><a href="#Rs-guards">SF.8: Use <code>#include</code> guards for all <code>.h</code> files</a></p></li>
 <li><p><a href="#Rs-cycles">SF.9: Avoid cyclic dependencies among source files</a></p></li>
 <li><p><a href="#Rs-implicit">SF.10: Avoid dependencies on implicitly <code>#include</code>d names</a></p></li>
+<li><p><a href="#Rs-contained">SF.11: Header files should be self-contained</a></p></li>
 <li><p><a href="#Rs-namespace">SF.20: Use <code>namespace</code>s to express logical structure</a></p></li>
 <li><p><a href="#Rs-unnamed">SF.21: Don't use an unnamed (anonymous) namespace in a header</a></p></li>
 <li><p><a href="#Rs-unnamed2">SF.22: Use an unnamed (anonymous) namespace for all internal/nonexported entities</a></p></li>
@@ -14261,7 +14308,7 @@ Use header files to represent interfaces and to emphasize logical structure.</p>
 <h5 id="reason-381">Reason</h5>
 <p>It's a longstanding convention.
 But consistency is more important, so if your project uses something else, follow that.</p>
-<h5 id="note-327">Note</h5>
+<h5 id="note-329">Note</h5>
 <p>This convention reflects a common use pattern:
 Headers are more often shared with C to compile as both C++ and C, which typically uses <code>.h</code>,
 and it's easier to name all headers <code>.h</code> instead of having different extensions for just those headers that are intended to be shared with C.
@@ -14362,9 +14409,9 @@ The user of <code>bar</code> cannot know if the interface used is complete and c
 #include &lt;algorithm&gt;
 #include &lt;string&gt;
 </code></pre>
-<h5 id="note-328">Note</h5>
+<h5 id="note-330">Note</h5>
 <p>This applies to both <code>.h</code> and <code>.cpp</code> files.</p>
-<h5 id="note-329">Note</h5>
+<h5 id="note-331">Note</h5>
 <p>There is an argument for insulating code from declarations and macros in header files by <code>#including</code> headers <em>after</em> the code we want to protect
 (as in the example labeled "bad").
 However</p>
@@ -14444,12 +14491,12 @@ int g(int x)
 </code></pre>
 <p>However, this is not particularly likely to lead to a resolution that is not an error and
 people who use <code>using namespace std</code> are supposed to know about <code>std</code> and about this risk.</p>
-<h5 id="note-330">Note</h5>
+<h5 id="note-332">Note</h5>
 <p>A <code>.cpp</code> file is a form of local scope.
 There is little difference in the opportunities for name clashes in an N-line <code>.cpp</code> containing a <code>using namespace X</code>,
 an N-line function containing a <code>using namespace X</code>,
 and M functions each containing a <code>using namespace X</code>with N lines of code in total.</p>
-<h5 id="note-331">Note</h5>
+<h5 id="note-333">Note</h5>
 <p><a href="#Rs-using-directive">Don't write <code>using namespace</code> in a header file</a>.</p>
 <h5 id="enforcement-356">Enforcement</h5>
 <p>Flag multiple <code>using namespace</code> directives for different namespaces in a single source file.</p>
@@ -14487,7 +14534,7 @@ the header file is part of.</p>
 </code></pre>
 <h5 id="enforcement-358">Enforcement</h5>
 <p>Flag <code>.h</code> files without <code>#include</code> guards.</p>
-<h5 id="note-332">Note</h5>
+<h5 id="note-334">Note</h5>
 <p>Some implementations offer vendor extensions like <code>#pragma once</code> as alternative to include guards.
 It is not standard and it is not portable.  It injects the hosting machine's filesystem semantics
 into your program, in addition to locking you down to a vendor.
@@ -14496,7 +14543,7 @@ Our recommendation is to write in ISO C++: See <a href="#Rp-Cplusplus">rule P.2<
 <h5 id="reason-389">Reason</h5>
 <p>Cycles complicates comprehension and slows down compilation.
 Complicates conversion to use language-supported modules (when they become available).</p>
-<h5 id="note-333">Note</h5>
+<h5 id="note-335">Note</h5>
 <p>Eliminate cycles; don't just break them with <code>#include</code> guards.</p>
 <h5 id="examplebad-133">Example, bad</h5>
 <pre><code>// file1.h:
@@ -14548,7 +14595,7 @@ void use()
     }
 }
 </code></pre>
-<h5 id="note-334">Note</h5>
+<h5 id="note-336">Note</h5>
 <p>Some headers exist exactly to collect a set of consistent declarations from a variety of headers.
 For example:</p>
 <pre><code>// basic_std_lib.h:
@@ -14567,33 +14614,46 @@ For example:</p>
 <h5 id="enforcement-360">Enforcement</h5>
 <p>Enforcement would require some knowledge about what in a header is meant to be "exported" to users and what is there to enable implementation.
 No really good solution is possible until we have modules.</p>
-<h3 id="anamersnamespaceasf20usenamespacestoexpresslogicalstructure"><a name="Rs-namespace"></a>SF.20: Use <code>namespace</code>s to express logical structure</h3>
+<h3 id="anamerscontainedasf11headerfilesshouldbeselfcontained"><a name="Rs-contained"></a>SF.11: Header files should be self-contained</h3>
 <h5 id="reason-391">Reason</h5>
-<p>???</p>
+<p>Usability, headers should be simple to use and work when included on their own.
+Headers should encapsulate the functionality they provide.
+Avoid clients of a header having to manage that header's dependencies.</p>
 <h5 id="example-342">Example</h5>
-<pre><code>???
+<pre><code>#include "helpers.h"
+// helpers.h depends on std::string and includes &lt;string&gt;
 </code></pre>
+<h5 id="note-337">Note</h5>
+<p>Failing to follow this results in difficult to diagnose errors for clients of a header.</p>
 <h5 id="enforcement-361">Enforcement</h5>
-<p>???</p>
-<h3 id="anamersunnamedasf21dontuseanunnamedanonymousnamespaceinaheader"><a name="Rs-unnamed"></a>SF.21: Don't use an unnamed (anonymous) namespace in a header</h3>
+<p>A test should verify that the header file itself compiles or that a cpp file which only includes the header file compiles.</p>
+<h3 id="anamersnamespaceasf20usenamespacestoexpresslogicalstructure"><a name="Rs-namespace"></a>SF.20: Use <code>namespace</code>s to express logical structure</h3>
 <h5 id="reason-392">Reason</h5>
-<p>It is almost always a bug to mention an unnamed namespace in a header file.</p>
+<p>???</p>
 <h5 id="example-343">Example</h5>
 <pre><code>???
 </code></pre>
 <h5 id="enforcement-362">Enforcement</h5>
+<p>???</p>
+<h3 id="anamersunnamedasf21dontuseanunnamedanonymousnamespaceinaheader"><a name="Rs-unnamed"></a>SF.21: Don't use an unnamed (anonymous) namespace in a header</h3>
+<h5 id="reason-393">Reason</h5>
+<p>It is almost always a bug to mention an unnamed namespace in a header file.</p>
+<h5 id="example-344">Example</h5>
+<pre><code>???
+</code></pre>
+<h5 id="enforcement-363">Enforcement</h5>
 <ul>
 <li>Flag any use of an anonymous namespace in a header file.</li>
 </ul>
 <h3 id="anamersunnamed2asf22useanunnamedanonymousnamespaceforallinternalnonexportedentities"><a name="Rs-unnamed2"></a>SF.22: Use an unnamed (anonymous) namespace for all internal/nonexported entities</h3>
-<h5 id="reason-393">Reason</h5>
+<h5 id="reason-394">Reason</h5>
 <p>Nothing external can depend on an entity in a nested unnamed namespace.
 Consider putting every definition in an implementation source file in an unnamed namespace unless that is defining an "external/exported" entity.</p>
-<h5 id="example-344">Example</h5>
+<h5 id="example-345">Example</h5>
 <p>An API class and its members can't live in an unnamed namespace; but any "helper" class or function that is defined in an implementation source file should be at an unnamed namespace scope.</p>
 <pre><code>???
 </code></pre>
-<h5 id="enforcement-363">Enforcement</h5>
+<h5 id="enforcement-364">Enforcement</h5>
 <ul>
 <li>???</li>
 </ul>
@@ -14622,28 +14682,28 @@ So, it is likely that this library section of the guidelines will eventually gro
 <li>???</li>
 </ul>
 <h3 id="anamersllibasl1uselibrarieswhereverpossible"><a name="Rsl-lib"></a>SL.1:  Use libraries wherever possible</h3>
-<h5 id="reason-394">Reason</h5>
+<h5 id="reason-395">Reason</h5>
 <p>Save time. Don't re-invent the wheel.
 Don't replicate the work of others.
 Benefit from other people's work when they make improvements.
 Help other people when you make improvements.</p>
 <h3 id="anamerslslasl2preferthestandardlibrarytootherlibraries"><a name="Rsl-sl"></a>SL.2: Prefer the standard library to other libraries</h3>
-<h5 id="reason-395">Reason</h5>
+<h5 id="reason-396">Reason</h5>
 <p>More people know the standard library.
 It is more likely to be stable, well-maintained, and widely available than your own code or most other libraries.</p>
 <h3 id="anameslstdasl3donotaddnonstandardentitiestonamespacestd"><a name="sl-std"></a>SL.3: Do not add non-standard entities to namespace <code>std</code></h3>
-<h5 id="reason-396">Reason</h5>
+<h5 id="reason-397">Reason</h5>
 <p>Adding to <code>std</code> may change the meaning of otherwise standards conforming code.
 Additions to <code>std</code> may clash with future versions of the standard.</p>
-<h5 id="example-345">Example</h5>
+<h5 id="example-346">Example</h5>
 <pre><code>???
 </code></pre>
-<h5 id="enforcement-364">Enforcement</h5>
+<h5 id="enforcement-365">Enforcement</h5>
 <p>Possible, but messy and likely to cause problems with platforms.</p>
 <h3 id="anameslsafeasl4usethestandardlibraryinatypesafemanner"><a name="sl-safe"></a>SL.4: Use the standard library in a type-safe manner</h3>
-<h5 id="reason-397">Reason</h5>
+<h5 id="reason-398">Reason</h5>
 <p>Because, obviously, breaking this rule can lead to undefined behavior, memory corruption, and all kinds of other bad errors.</p>
-<h5 id="note-335">Note</h5>
+<h5 id="note-338">Note</h5>
 <p>This is a semi-philosophical meta-rule, which needs many supporting concrete rules.
 We need it as an umbrella for the more specific rules.</p>
 <p>Summary of more specific rules:</p>
@@ -14660,39 +14720,39 @@ We need it as an umbrella for the more specific rules.</p>
 <li>???</li>
 </ul>
 <h3 id="anamerslarraysaslcon1preferusingstlarrayorvectorinsteadofacarray"><a name="Rsl-arrays"></a>SL.con.1: Prefer using STL <code>array</code> or <code>vector</code> instead of a C array</h3>
-<h5 id="reason-398">Reason</h5>
+<h5 id="reason-399">Reason</h5>
 <p>C arrays are less safe, and have no advantages over <code>array</code> and <code>vector</code>.
 For a fixed-length array, use <code>std::array</code>, which does not degenerate to a pointer when passed to a function and does know its size.
 Also, like a built-in array, a stack-allocated <code>std::array</code> keeps its elements on the stack.
 For a variable-length array, use <code>std::vector</code>, which additionally can change its size and handles memory allocation.</p>
-<h5 id="example-346">Example</h5>
+<h5 id="example-347">Example</h5>
 <pre><code>int v[SIZE];                        // BAD
 
 std::array&lt;int, SIZE&gt; w;             // ok
 </code></pre>
-<h5 id="example-347">Example</h5>
+<h5 id="example-348">Example</h5>
 <pre><code>int* v = new int[initial_size];     // BAD, owning raw pointer
 delete[] v;                         // BAD, manual delete
 
 std::vector&lt;int&gt; w(initial_size);   // ok
 </code></pre>
-<h5 id="note-336">Note</h5>
+<h5 id="note-339">Note</h5>
 <p>Use <code>gsl::span</code> for non-owning references into a container.</p>
-<h5 id="note-337">Note</h5>
+<h5 id="note-340">Note</h5>
 <p>Comparing the performance of a fixed-sized array allocated on the stack against a <code>vector</code> with its elements on the free store is bogus.
 You could just as well compare a <code>std::array</code> on the stack against the result of a <code>malloc()</code> accessed through a pointer.
 For most code, even the difference between stack allocation and free-store allocation doesn't matter, but the convenience and safety of <code>vector</code> does.
 People working with code for which that difference matters are quite capable of choosing between <code>array</code> and <code>vector</code>.</p>
-<h5 id="enforcement-365">Enforcement</h5>
+<h5 id="enforcement-366">Enforcement</h5>
 <ul>
 <li>Flag declaration of a C array inside a function or class that also declares an STL container (to avoid excessive noisy warnings on legacy non-STL code). To fix: At least change the C array to a <code>std::array</code>.</li>
 </ul>
 <h3 id="anamerslvectoraslcon2preferusingstlvectorbydefaultunlessyouhaveareasontouseadifferentcontainer"><a name="Rsl-vector"></a>SL.con.2: Prefer using STL <code>vector</code> by default unless you have a reason to use a different container</h3>
-<h5 id="reason-399">Reason</h5>
+<h5 id="reason-400">Reason</h5>
 <p><code>vector</code> and <code>array</code> are the only standard containers that offer the fastest general-purpose access (random access, including being vectorization-friendly), the fastest default access pattern (begin-to-end or end-to-begin is prefetcher-friendly), and the lowest space overhead (contiguous layout has zero per-element overhead, which is cache-friendly).
 Usually you need to add and remove elements from the container, so use <code>vector</code> by default; if you don't need to modify the container's size, use <code>array</code>.</p>
 <p>Even when other containers seem more suited, such a <code>map</code> for O(log N) lookup performance or a <code>list</code> for efficient insertion in the middle, a <code>vector</code> will usually still perform better for containers up to a few KB in size.</p>
-<h5 id="note-338">Note</h5>
+<h5 id="note-341">Note</h5>
 <p><code>string</code> should not be used as a container of individual characters. A <code>string</code> is a textual string; if you want a container of characters, use <code>vector&lt;/*char_type*/&gt;</code> or <code>array&lt;/*char_type*/&gt;</code> instead.</p>
 <h5 id="exceptions-1">Exceptions</h5>
 <p>If you have a good reason to use another container, use that instead. For example:</p>
@@ -14700,14 +14760,14 @@ Usually you need to add and remove elements from the container, so use <code>vec
 <li><p>If <code>vector</code> suits your needs but you don't need the container to be variable size, use <code>array</code> instead.</p></li>
 <li><p>If you want a dictionary-style lookup container that guarantees O(K) or O(log N) lookups, the container will be larger (more than a few KB) and you perform frequent inserts so that the overhead of maintaining a sorted <code>vector</code> is infeasible, go ahead and use an <code>unordered_map</code> or <code>map</code> instead.</p></li>
 </ul>
-<h5 id="enforcement-366">Enforcement</h5>
+<h5 id="enforcement-367">Enforcement</h5>
 <ul>
 <li>Flag a <code>vector</code> whose size never changes after construction (such as because it's <code>const</code> or because no non-<code>const</code> functions are called on it). To fix: Use an <code>array</code> instead.</li>
 </ul>
 <h3 id="anamerslboundsaslcon3avoidboundserrors"><a name="Rsl-bounds"></a>SL.con.3: Avoid bounds errors</h3>
-<h5 id="reason-400">Reason</h5>
+<h5 id="reason-401">Reason</h5>
 <p>Read or write beyond an allocated range of elements typically leads to bad errors, wrong results, crashes, and security violations.</p>
-<h5 id="note-339">Note</h5>
+<h5 id="note-342">Note</h5>
 <p>The standard-library functions that apply to ranges of elements all have (or could have) bounds-safe overloads that take <code>span</code>.
 Standard types such as <code>vector</code> can be modified to perform bounds-checks under the bounds profile (in a compatible way, such as by adding contracts), or used with <code>at()</code>.</p>
 <p>Ideally, the in-bounds guarantee should be statically enforced.
@@ -14732,7 +14792,7 @@ For example</p>
 }
 </code></pre>
 <p>Also, <code>std::array&lt;&gt;::fill()</code> or <code>std::fill()</code> or even an empty initializer are better candidate than <code>memset()</code>.</p>
-<h5 id="examplegood-21">Example, good</h5>
+<h5 id="examplegood-22">Example, good</h5>
 <pre><code>void f()
 {
     array&lt;int, 10&gt; a, b, c{};       // c is initialized to zero
@@ -14745,7 +14805,7 @@ For example</p>
     }
 }
 </code></pre>
-<h5 id="example-348">Example</h5>
+<h5 id="example-349">Example</h5>
 <p>If code is using an unmodified standard library, then there are still workarounds that enable use of <code>std::array</code> and <code>std::vector</code> in a bounds-safe manner. Code can call the <code>.at()</code> member function on each class, which will result in an <code>std::out_of_range</code> exception being thrown. Alternatively, code can call the <code>at()</code> free function, which will result in fail-fast (or a customized action) on a bounds violation.</p>
 <pre><code>void f(std::vector&lt;int&gt;&amp; v, std::array&lt;int, 12&gt; a, int i)
 {
@@ -14758,7 +14818,7 @@ For example</p>
     v.at(0) = at(a, i); // OK (alternative 2)
 }
 </code></pre>
-<h5 id="enforcement-367">Enforcement</h5>
+<h5 id="enforcement-368">Enforcement</h5>
 <ul>
 <li>Issue a diagnostic for any call to a standard-library function that is not bounds-checked.
 ??? insert link to a list of banned functions</li>
@@ -14795,9 +14855,9 @@ We don't consider</p>
 <li><a href="#Rf-zstring">F.25 zstring</a></li>
 </ul>
 <h3 id="anamerstrstringaslstr1usestdstringtoowncharactersequences"><a name="Rstr-string"></a>SL.str.1: Use <code>std::string</code> to own character sequences</h3>
-<h5 id="reason-401">Reason</h5>
+<h5 id="reason-402">Reason</h5>
 <p><code>string</code> correctly handles allocation, ownership, copying, gradual expansion, and offers a variety of useful operations.</p>
-<h5 id="example-349">Example</h5>
+<h5 id="example-350">Example</h5>
 <pre><code>vector&lt;string&gt; read_until(const string&amp; terminator)
 {
     vector&lt;string&gt; res;
@@ -14844,16 +14904,16 @@ allocations, deallocations, or range checks (<code>string</code> takes care of t
 <p>Did we get that right?
 Will the caller remember to <code>free()</code> the returned pointer?
 Will this code pass a security review?</p>
-<h5 id="note-340">Note</h5>
+<h5 id="note-343">Note</h5>
 <p>Do not assume that <code>string</code> is slower than lower-level techniques without measurement and remember than not all code is performance critical.
 <a href="#Rper-Knuth">Don't optimize prematurely</a></p>
-<h5 id="enforcement-368">Enforcement</h5>
+<h5 id="enforcement-369">Enforcement</h5>
 <p>???</p>
 <h3 id="anamerstrviewaslstr2usestdstring_vieworgslstring_spantorefertocharactersequences"><a name="Rstr-view"></a>SL.str.2: Use <code>std::string_view</code> or <code>gsl::string_span</code> to refer to character sequences</h3>
-<h5 id="reason-402">Reason</h5>
+<h5 id="reason-403">Reason</h5>
 <p><code>std::string_view</code> or <code>gsl::string_span</code> provides simple and (potentially) safe access to character sequences independently of how
 those sequences are allocated and stored.</p>
-<h5 id="example-350">Example</h5>
+<h5 id="example-351">Example</h5>
 <pre><code>vector&lt;string&gt; read_until(string_span terminator);
 
 void user(zstring p, const string&amp; s, string_span ss)
@@ -14864,17 +14924,17 @@ void user(zstring p, const string&amp; s, string_span ss)
     // ...
 }
 </code></pre>
-<h5 id="note-341">Note</h5>
+<h5 id="note-344">Note</h5>
 <p><code>std::string_view</code> (C++17) is read-only.</p>
-<h5 id="enforcement-369">Enforcement</h5>
+<h5 id="enforcement-370">Enforcement</h5>
 <p>???</p>
 <h3 id="anamerstrzstringaslstr3usezstringorczstringtorefertoacstylezeroterminatedsequenceofcharacters"><a name="Rstr-zstring"></a>SL.str.3: Use <code>zstring</code> or <code>czstring</code> to refer to a C-style, zero-terminated, sequence of characters</h3>
-<h5 id="reason-403">Reason</h5>
+<h5 id="reason-404">Reason</h5>
 <p>Readability.
 Statement of intent.
 A plain <code>char*</code> can be a pointer to a single character, a pointer to an array of characters, a pointer to a C-style (zero-terminated) string, or even to a small integer.
 Distinguishing these alternatives prevents misunderstandings and bugs.</p>
-<h5 id="example-351">Example</h5>
+<h5 id="example-352">Example</h5>
 <pre><code>void f1(const char* s); // s is probably a string
 </code></pre>
 <p>All we know is that it is supposed to be the nullptr or point to at least one character</p>
@@ -14882,23 +14942,23 @@ Distinguishing these alternatives prevents misunderstandings and bugs.</p>
 void f1(czstring s);    // s is a C-style string constant or the nullptr
 void f1(std::byte* s);  // s is a pointer to a byte (C++17)
 </code></pre>
-<h5 id="note-342">Note</h5>
+<h5 id="note-345">Note</h5>
 <p>Don't convert a C-style string to <code>string</code> unless there is a reason to.</p>
-<h5 id="note-343">Note</h5>
+<h5 id="note-346">Note</h5>
 <p>Like any other "plain pointer", a <code>zstring</code> should not represent ownership.</p>
-<h5 id="note-344">Note</h5>
+<h5 id="note-347">Note</h5>
 <p>There are billions of lines of C++ "out there", most use <code>char*</code> and <code>const char*</code> without documenting intent.
 They are used in a wide variety of ways, including to represent ownership and as generic pointers to memory (instead of <code>void*</code>).
 It is hard to separate these uses, so this guideline is hard to follow.
 This is one of the major sources of bugs in C and C++ programs, so it is worthwhile to follow this guideline wherever feasible..</p>
-<h5 id="enforcement-370">Enforcement</h5>
+<h5 id="enforcement-371">Enforcement</h5>
 <ul>
 <li>Flag uses of <code>[]</code> on a <code>char*</code></li>
 <li>Flag uses of <code>delete</code> on a <code>char*</code></li>
 <li>Flag uses of <code>free()</code> on a <code>char*</code></li>
 </ul>
 <h3 id="anamerstrcharaslstr4usechartorefertoasinglecharacter"><a name="Rstr-char*"></a>SL.str.4: Use <code>char*</code> to refer to a single character</h3>
-<h5 id="reason-404">Reason</h5>
+<h5 id="reason-405">Reason</h5>
 <p>The variety of uses of <code>char*</code> in current code is a major source of errors.</p>
 <h5 id="examplebad-136">Example, bad</h5>
 <pre><code>char arr[] = {'a', 'b', 'c'};
@@ -14916,52 +14976,52 @@ void use()
 <p>The array <code>arr</code> is not a C-style string because it is not zero-terminated.</p>
 <h5 id="alternative-12">Alternative</h5>
 <p>See <a href="#Rstr-zstring"><code>zstring</code></a>, <a href="#Rstr-string"><code>string</code></a>, and <a href="#Rstr-view"><code>string_span</code></a>.</p>
-<h5 id="enforcement-371">Enforcement</h5>
+<h5 id="enforcement-372">Enforcement</h5>
 <ul>
 <li>Flag uses of <code>[]</code> on a <code>char*</code></li>
 </ul>
 <h3 id="anamerstrbyteaslstr5usestdbytetorefertobytevaluesthatdonotnecessarilyrepresentcharacters"><a name="Rstr-byte"></a>SL.str.5: Use <code>std::byte</code> to refer to byte values that do not necessarily represent characters</h3>
-<h5 id="reason-405">Reason</h5>
+<h5 id="reason-406">Reason</h5>
 <p>Use of <code>char*</code> to represent a pointer to something that is not necessarily a character causes confusion
 and disables valuable optimizations.</p>
-<h5 id="example-352">Example</h5>
-<pre><code>???
-</code></pre>
-<h5 id="note-345">Note</h5>
-<p>C++17</p>
-<h5 id="enforcement-372">Enforcement</h5>
-<p>???</p>
-<h3 id="anamerstrlocaleaslstr10usestdstringwhenyouneedtoperformlocalesensitivestringoperations"><a name="Rstr-locale"></a>SL.str.10: Use <code>std::string</code> when you need to perform locale-sensitive string operations</h3>
-<h5 id="reason-406">Reason</h5>
-<p><code>std::string</code> supports standard-library <a href="#Rstr-locale"><code>locale</code> facilities</a></p>
 <h5 id="example-353">Example</h5>
 <pre><code>???
 </code></pre>
-<h5 id="note-346">Note</h5>
-<p>???</p>
+<h5 id="note-348">Note</h5>
+<p>C++17</p>
 <h5 id="enforcement-373">Enforcement</h5>
 <p>???</p>
-<h3 id="anamerstrspanaslstr11usegslstring_spanratherthanstdstring_viewwhenyouneedtomutateastring"><a name="Rstr-span"></a>SL.str.11: Use <code>gsl::string_span</code> rather than <code>std::string_view</code> when you need to mutate a string</h3>
+<h3 id="anamerstrlocaleaslstr10usestdstringwhenyouneedtoperformlocalesensitivestringoperations"><a name="Rstr-locale"></a>SL.str.10: Use <code>std::string</code> when you need to perform locale-sensitive string operations</h3>
 <h5 id="reason-407">Reason</h5>
-<p><code>std::string_view</code> is read-only.</p>
+<p><code>std::string</code> supports standard-library <a href="#Rstr-locale"><code>locale</code> facilities</a></p>
 <h5 id="example-354">Example</h5>
-<p>???</p>
-<h5 id="note-347">Note</h5>
+<pre><code>???
+</code></pre>
+<h5 id="note-349">Note</h5>
 <p>???</p>
 <h5 id="enforcement-374">Enforcement</h5>
+<p>???</p>
+<h3 id="anamerstrspanaslstr11usegslstring_spanratherthanstdstring_viewwhenyouneedtomutateastring"><a name="Rstr-span"></a>SL.str.11: Use <code>gsl::string_span</code> rather than <code>std::string_view</code> when you need to mutate a string</h3>
+<h5 id="reason-408">Reason</h5>
+<p><code>std::string_view</code> is read-only.</p>
+<h5 id="example-355">Example</h5>
+<p>???</p>
+<h5 id="note-350">Note</h5>
+<p>???</p>
+<h5 id="enforcement-375">Enforcement</h5>
 <p>The compiler will flag attempts to write to a <code>string_view</code>.</p>
 <h3 id="anamerstrsaslstr12usethessuffixforstringliteralsmeanttobestandardlibrarystrings"><a name="Rstr-s"></a>SL.str.12: Use the <code>s</code> suffix for string literals meant to be standard-library <code>string</code>s</h3>
-<h5 id="reason-408">Reason</h5>
+<h5 id="reason-409">Reason</h5>
 <p>Direct expression of an idea minimizes mistakes.</p>
-<h5 id="example-355">Example</h5>
+<h5 id="example-356">Example</h5>
 <pre><code>auto pp1 = make_pair("Tokyo", 9.00);         // {C-style string,double} intended?
 pair&lt;string, double&gt; pp2 = {"Tokyo", 9.00};  // a bit verbose
 auto pp3 = make_pair("Tokyo"s, 9.00);        // {std::string,double}    // C++17
 pair pp4 = {"Tokyo"s, 9.00};                 // {std::string,double}    // C++17
 </code></pre>
-<h5 id="note-348">Note</h5>
+<h5 id="note-351">Note</h5>
 <p>C++17</p>
-<h5 id="enforcement-375">Enforcement</h5>
+<h5 id="enforcement-376">Enforcement</h5>
 <p>???</p>
 <h2 id="anamessioaslioiostream"><a name="SS-io"></a>SL.io: Iostream</h2>
 <p><code>iostream</code>s is a type safe, extensible, formatted and unformatted I/O library for streaming I/O.
@@ -14978,10 +15038,10 @@ and user-defines extensions, such as streaming across networks (asio: not yet st
 <li><a href="#???">???</a></li>
 </ul>
 <h3 id="anameriolowaslio1usecharacterlevelinputonlywhenyouhaveto"><a name="Rio-low"></a>SL.io.1: Use character-level input only when you have to</h3>
-<h5 id="reason-409">Reason</h5>
+<h5 id="reason-410">Reason</h5>
 <p>Unless you genuinely just deal with individual characters, using character-level input leads to the user code performing potentially error-prone
 and potentially inefficient composition of tokens out of characters.</p>
-<h5 id="example-356">Example</h5>
+<h5 id="example-357">Example</h5>
 <pre><code>char c;
 char buf[128];
 int i = 0;
@@ -14997,27 +15057,27 @@ s.reserve(128);
 cin &gt;&gt; s;
 </code></pre>
 <p>and the <code>reserve(128)</code> is probably not worthwhile.</p>
-<h5 id="enforcement-376">Enforcement</h5>
-<p>???</p>
-<h3 id="anameriovalidateaslio2whenreadingalwaysconsiderillformedinput"><a name="Rio-validate"></a>SL.io.2: When reading, always consider ill-formed input</h3>
-<h5 id="reason-410">Reason</h5>
-<p>Errors are typically best handled as soon as possible.
-If input isn't validated, every function must be written to cope with bad data (and that is not practical).</p>
-<h5 id="example-357">Example</h5>
-<pre><code>???
-</code></pre>
 <h5 id="enforcement-377">Enforcement</h5>
 <p>???</p>
-<h3 id="anameriostreamsaslio3preferiostreamsforio"><a name="Rio-streams"></a>SL.io.3: Prefer <code>iostream</code>s for I/O</h3>
+<h3 id="anameriovalidateaslio2whenreadingalwaysconsiderillformedinput"><a name="Rio-validate"></a>SL.io.2: When reading, always consider ill-formed input</h3>
 <h5 id="reason-411">Reason</h5>
-<p><code>iostream</code>s are safe, flexible, and extensible.</p>
+<p>Errors are typically best handled as soon as possible.
+If input isn't validated, every function must be written to cope with bad data (and that is not practical).</p>
 <h5 id="example-358">Example</h5>
+<pre><code>???
+</code></pre>
+<h5 id="enforcement-378">Enforcement</h5>
+<p>???</p>
+<h3 id="anameriostreamsaslio3preferiostreamsforio"><a name="Rio-streams"></a>SL.io.3: Prefer <code>iostream</code>s for I/O</h3>
+<h5 id="reason-412">Reason</h5>
+<p><code>iostream</code>s are safe, flexible, and extensible.</p>
+<h5 id="example-359">Example</h5>
 <pre><code>// write a complex number:
 complex&lt;double&gt; z{ 3, 4 };
 cout &lt;&lt; z &lt;&lt; '\n';
 </code></pre>
 <p><code>complex</code> is a user-defined type and its I/O is defined without modifying the <code>iostream</code> library.</p>
-<h5 id="example-359">Example</h5>
+<h5 id="example-360">Example</h5>
 <pre><code>// read a file of complex numbers:
 for (complex&lt;double&gt; z; cin &gt;&gt; z; )
     v.push_back(z);
@@ -15032,34 +15092,34 @@ implicit memory management, and <code>locale</code> handling.</p>
 <p>If you need I/O performance, you can almost always do better than <code>printf()</code>.</p>
 <p><code>gets()</code> <code>scanf()</code> using <code>s</code>, and <code>printf()</code> using <code>%s</code> are security hazards (vulnerable to buffer overflow and generally error-prone).
 In C11, they are replaced by <code>gets_s()</code>, <code>scanf_s()</code>, and <code>printf_s()</code> as safer alternatives, but they are still not type safe.</p>
-<h5 id="enforcement-378">Enforcement</h5>
+<h5 id="enforcement-379">Enforcement</h5>
 <p>Optionally flag <code>&lt;cstdio&gt;</code> and <code>&lt;stdio.h&gt;</code>.</p>
 <h3 id="anameriosyncaslio10unlessyouuseprintffamilyfunctionscallios_basesync_with_stdiofalse"><a name="Rio-sync"></a>SL.io.10: Unless you use <code>printf</code>-family functions call <code>ios_base::sync_with_stdio(false)</code></h3>
-<h5 id="reason-412">Reason</h5>
+<h5 id="reason-413">Reason</h5>
 <p>Synchronizing <code>iostreams</code> with <code>printf-style</code> I/O can be costly.
 <code>cin</code> and <code>cout</code> are by default synchronized with <code>printf</code>.</p>
-<h5 id="example-360">Example</h5>
+<h5 id="example-361">Example</h5>
 <pre><code>int main()
 {
     ios_base::sync_with_stdio(false);
     // ... use iostreams ...
 }
 </code></pre>
-<h5 id="enforcement-379">Enforcement</h5>
+<h5 id="enforcement-380">Enforcement</h5>
 <p>???</p>
 <h3 id="anamerioendlaslio50avoidendl"><a name="Rio-endl"></a>SL.io.50: Avoid <code>endl</code></h3>
-<h5 id="reason-413">Reason</h5>
+<h5 id="reason-414">Reason</h5>
 <p>The <code>endl</code> manipulator is mostly equivalent to <code>'\n'</code> and <code>"\n"</code>;
 as most commonly used it simply slows down output by doing redundant <code>flush()</code>s.
 This slowdown can be significant compared to <code>printf</code>-style output.</p>
-<h5 id="example-361">Example</h5>
+<h5 id="example-362">Example</h5>
 <pre><code>cout &lt;&lt; "Hello, World!" &lt;&lt; endl;    // two output operations and a flush
 cout &lt;&lt; "Hello, World!\n";          // one output operation and no flush
 </code></pre>
-<h5 id="note-349">Note</h5>
+<h5 id="note-352">Note</h5>
 <p>For <code>cin</code>/<code>cout</code> (and equivalent) interaction, there is no reason to flush; that's done automatically.
 For writing to a file, there is rarely a need to <code>flush</code>.</p>
-<h5 id="note-350">Note</h5>
+<h5 id="note-353">Note</h5>
 <p>Apart from the (occasionally important) issue of performance,
 the choice between <code>'\n'</code> and <code>endl</code> is almost completely aesthetic.</p>
 <h2 id="anamessregexaslregexregex"><a name="SS-regex"></a>SL.regex: Regex</h2>
@@ -15078,9 +15138,9 @@ It provides clocks for registering <code>time_points</code>.</p>
 <li><a href="#???">???</a></li>
 </ul>
 <h3 id="anamerclibjmpaslc1dontusesetjmplongjmp"><a name="Rclib-jmp"></a>SL.C.1: Don't use setjmp/longjmp</h3>
-<h5 id="reason-414">Reason</h5>
+<h5 id="reason-415">Reason</h5>
 <p>a <code>longjmp</code> ignores destructors, thus invalidating all resource-management strategies relying on RAII</p>
-<h5 id="enforcement-380">Enforcement</h5>
+<h5 id="enforcement-381">Enforcement</h5>
 <p>Flag all occurrences of <code>longjmp</code>and <code>setjmp</code></p>
 <h1 id="anamesaaaarchitecturalideas"><a name="S-A"></a>A: Architectural ideas</h1>
 <p>This section contains ideas about higher-level architectural ideas and libraries.</p>
@@ -15099,18 +15159,18 @@ It provides clocks for registering <code>time_points</code>.</p>
 <h3 id="anamerastableaa1separatestablefromlessstablepartofcode"><a name="Ra-stable"></a>A.1: Separate stable from less stable part of code</h3>
 <p>???</p>
 <h3 id="anameralibaa2expresspotentiallyreusablepartsasalibrary"><a name="Ra-lib"></a>A.2: Express potentially reusable parts as a library</h3>
-<h5 id="reason-415">Reason</h5>
-<h5 id="note-351">Note</h5>
+<h5 id="reason-416">Reason</h5>
+<h5 id="note-354">Note</h5>
 <p>A library is a collection of declarations and definitions maintained, documented, and shipped together.
 A library could be a set of headers (a "header only library") or a set of headers plus a set of object files.
 A library can be statically or dynamically linked into a program, or it may be <code>#include</code>d</p>
 <h3 id="anameradagaa4thereshouldbenocyclesamonglibraries"><a name="Ra-dag"></a>A.4: There should be no cycles among libraries</h3>
-<h5 id="reason-416">Reason</h5>
+<h5 id="reason-417">Reason</h5>
 <ul>
 <li>A cycle implies complication of the build process.</li>
 <li>Cycles are hard to understand and may introduce indeterminism (unspecified behavior).</li>
 </ul>
-<h5 id="note-352">Note</h5>
+<h5 id="note-355">Note</h5>
 <p>A library can contain cyclic references in the definition of its components.
 For example:</p>
 <pre><code>???
@@ -15173,7 +15233,7 @@ Unfortunately, compilers cannot catch all such errors and unfortunately, the bug
 <h5 id="reasonnottofollowthisrule-1">Reason (not to follow this rule)</h5>
 <p>The single-return rule can lead to unnecessarily convoluted code and the introduction of extra state variables.
 In particular, the single-return rule makes it harder to concentrate error checking at the top of a function.</p>
-<h5 id="example-362">Example</h5>
+<h5 id="example-363">Example</h5>
 <pre><code>template&lt;class T&gt;
 //  requires Number&lt;T&gt;
 string sign(T x)
@@ -15203,7 +15263,7 @@ string sign(T x)        // bad
 <p>This is both longer and likely to be less efficient.
 The larger and more complicated the function is, the more painful the workarounds get.
 Of course many simple functions will naturally have just one <code>return</code> because of their simpler inherent logic.</p>
-<h5 id="example-363">Example</h5>
+<h5 id="example-364">Example</h5>
 <pre><code>int index(const char* p)
 {
     if (!p) return -1;  // error indicator: alternatively "throw nullptr_error{}"
@@ -15285,7 +15345,7 @@ As far as we know such tools are not available (at least not to most programmers
 <li>Don't try to catch every exception in every function (that's tedious, clumsy, and leads to slow code).</li>
 <li>Exceptions are not for errors that require instant termination of a module/system after a non-recoverable error.</li>
 </ul>
-<h5 id="example-364">Example</h5>
+<h5 id="example-365">Example</h5>
 <pre><code>???
 </code></pre>
 <h5 id="alternative-15">Alternative</h5>
@@ -15297,7 +15357,7 @@ As far as we know such tools are not available (at least not to most programmers
 <h5 id="reasonnottofollowthisrule-3">Reason (not to follow this rule)</h5>
 <p>The resulting number of files are hard to manage and can slow down compilation.
 Individual classes are rarely a good logical unit of maintenance and distribution.</p>
-<h5 id="example-365">Example</h5>
+<h5 id="example-366">Example</h5>
 <pre><code>???
 </code></pre>
 <h5 id="alternative-16">Alternative</h5>
@@ -15309,7 +15369,7 @@ Individual classes are rarely a good logical unit of maintenance and distributio
 <p>Following this rule leads to weaker invariants,
 more complicated code (having to deal with semi-constructed objects),
 and errors (when we didn't deal correctly with semi-constructed objects consistently).</p>
-<h5 id="example-366">Example</h5>
+<h5 id="example-367">Example</h5>
 <pre><code>???
 </code></pre>
 <h5 id="alternative-17">Alternative</h5>
@@ -15345,7 +15405,7 @@ exit:
 <p><code>protected</code> data is a source of errors.
 <code>protected</code> data can be manipulated from an unbounded amount of code in various places.
 <code>protected</code> data is the class hierarchy equivalent to global data.</p>
-<h5 id="example-367">Example</h5>
+<h5 id="example-368">Example</h5>
 <pre><code>???
 </code></pre>
 <h5 id="alternative-19">Alternative</h5>
@@ -15803,19 +15863,19 @@ However, we have had many requests for a set of naming and layout conventions to
 <p>These rules bear a strong resemblance to the recommendations in the <a href="http://www.stroustrup.com/Programming/PPP-style.pdf">PPP Style Guide</a>
 written in support of Stroustrup's <a href="http://www.stroustrup.com/programming.html">Programming: Principles and Practice using C++</a>.</p>
 <h3 id="anamerlcommentsanl1dontsayincommentswhatcanbeclearlystatedincode"><a name="Rl-comments"></a>NL.1: Don't say in comments what can be clearly stated in code</h3>
-<h5 id="reason-417">Reason</h5>
+<h5 id="reason-418">Reason</h5>
 <p>Compilers do not read comments.
 Comments are less precise than code.
 Comments are not updated as consistently as code.</p>
 <h5 id="examplebad-139">Example, bad</h5>
 <pre><code>auto x = m * v1 + vv;   // multiply m with v1 and add the result to vv
 </code></pre>
-<h5 id="enforcement-381">Enforcement</h5>
+<h5 id="enforcement-382">Enforcement</h5>
 <p>Build an AI program that interprets colloquial English text and see if what is said could be better expressed in C++.</p>
 <h3 id="anamerlcommentsintentanl2stateintentincomments"><a name="Rl-comments-intent"></a>NL.2: State intent in comments</h3>
-<h5 id="reason-418">Reason</h5>
+<h5 id="reason-419">Reason</h5>
 <p>Code says what is done, not what is supposed to be done. Often intent can be stated more clearly and concisely than the implementation.</p>
-<h5 id="example-368">Example</h5>
+<h5 id="example-369">Example</h5>
 <pre><code>void stable_sort(Sortable&amp; c)
     // sort c in the order determined by &lt;, keep equal elements (as defined by ==) in
     // their original relative order
@@ -15823,20 +15883,20 @@ Comments are not updated as consistently as code.</p>
     // ... quite a few lines of non-trivial code ...
 }
 </code></pre>
-<h5 id="note-353">Note</h5>
+<h5 id="note-356">Note</h5>
 <p>If the comment and the code disagree, both are likely to be wrong.</p>
 <h3 id="anamerlcommentscrispanl3keepcommentscrisp"><a name="Rl-comments-crisp"></a>NL.3: Keep comments crisp</h3>
-<h5 id="reason-419">Reason</h5>
+<h5 id="reason-420">Reason</h5>
 <p>Verbosity slows down understanding and makes the code harder to read by spreading it around in the source file.</p>
-<h5 id="note-354">Note</h5>
+<h5 id="note-357">Note</h5>
 <p>Use intelligible English.
 I may be fluent in Danish, but most programmers are not; the maintainers of my code may not be.
 Avoid SMS lingo and watch your grammar, punctuation, and capitalization.
 Aim for professionalism, not "cool."</p>
-<h5 id="enforcement-382">Enforcement</h5>
+<h5 id="enforcement-383">Enforcement</h5>
 <p>not possible.</p>
 <h3 id="anamerlindentanl4maintainaconsistentindentationstyle"><a name="Rl-indent"></a>NL.4: Maintain a consistent indentation style</h3>
-<h5 id="reason-420">Reason</h5>
+<h5 id="reason-421">Reason</h5>
 <p>Readability. Avoidance of "silly mistakes."</p>
 <h5 id="examplebad-140">Example, bad</h5>
 <pre><code>int i;
@@ -15844,14 +15904,14 @@ for (i = 0; i &lt; max; ++i); // bug waiting to happen
 if (i == j)
     return i;
 </code></pre>
-<h5 id="note-355">Note</h5>
+<h5 id="note-358">Note</h5>
 <p>Always indenting the statement after <code>if (...)</code>, <code>for (...)</code>, and <code>while (...)</code> is usually a good idea:</p>
 <pre><code>if (i &lt; 0) error("negative argument");
 
 if (i &lt; 0)
     error("negative argument");
 </code></pre>
-<h5 id="enforcement-383">Enforcement</h5>
+<h5 id="enforcement-384">Enforcement</h5>
 <p>Use a tool.</p>
 <h3 id="anamerlnametypeanl5avoidencodingtypeinformationinnames"><a name="Rl-name-type"></a>NL.5: Avoid encoding type information in names</h3>
 <h5 id="rationale">Rationale</h5>
@@ -15865,21 +15925,21 @@ void print_string(const char*);
 print_int(1);          // repetitive, manual type matching
 print_string("xyzzy"); // repetitive, manual type matching
 </code></pre>
-<h5 id="examplegood-22">Example, good</h5>
+<h5 id="examplegood-23">Example, good</h5>
 <pre><code>void print(int i);
 void print(string_view);    // also works on any string-like sequence
 
 print(1);              // clear, automatic type matching
 print("xyzzy");        // clear, automatic type matching
 </code></pre>
-<h5 id="note-356">Note</h5>
+<h5 id="note-359">Note</h5>
 <p>Names with types encoded are either verbose or cryptic.</p>
 <pre><code>printS  // print a std::string
 prints  // print a C-style string
 printi  // print an int
 </code></pre>
 <p>Requiring techniques like Hungarian notation to encode a type in a name is needed in C, but is generally unnecessary and actively harmful in a strongly statically-typed language like C++, because the annotations get out of date (the warts are just like comments and rot just like them) and they interfere with good use of the language (use the same name and overload resolution instead).</p>
-<h5 id="note-357">Note</h5>
+<h5 id="note-360">Note</h5>
 <p>Some styles use very general (not type-specific) prefixes to denote the general use of a variable.</p>
 <pre><code>auto p = new User();
 auto p = make_unique&lt;User&gt;();
@@ -15891,7 +15951,7 @@ auto cntHits = calc_total_of_hits(/*...*/);
 //       just generally to say "this is a count of something"
 </code></pre>
 <p>This is not harmful and does not fall under this guideline because it does not encode type information.</p>
-<h5 id="note-358">Note</h5>
+<h5 id="note-361">Note</h5>
 <p>Some styles distinguishes members from local variable, and/or from global variable.</p>
 <pre><code>struct S {
     int m_;
@@ -15899,7 +15959,7 @@ auto cntHits = calc_total_of_hits(/*...*/);
 };
 </code></pre>
 <p>This is not harmful and does not fall under this guideline because it does not encode type information.</p>
-<h5 id="note-359">Note</h5>
+<h5 id="note-362">Note</h5>
 <p>Like C++, some styles distinguishes types from non-types.
 For example, by capitalizing type names, but not the names of functions and variables.</p>
 <pre><code>typename&lt;typename T&gt;
@@ -15912,7 +15972,7 @@ HashTable&lt;int&gt; index;
 <p>This is not harmful and does not fall under this guideline because it does not encode type information.</p>
 <h3 id="anamerlnamelengthanl7makethelengthofanameroughlyproportionaltothelengthofitsscope"><a name="Rl-name-length"></a>NL.7: Make the length of a name roughly proportional to the length of its scope</h3>
 <p><strong>Rationale</strong>: The larger the scope the greater the chance of confusion and of an unintended name clash.</p>
-<h5 id="example-369">Example</h5>
+<h5 id="example-370">Example</h5>
 <pre><code>double sqrt(double x);   // return the square root of x; x must be non-negative
 
 int length(const char* p);  // return the number of characters in a zero-terminated C-style string
@@ -15924,14 +15984,14 @@ int g;      // bad: global variable with a cryptic name
 int open;   // bad: global variable with a short, popular name
 </code></pre>
 <p>The use of <code>p</code> for pointer and <code>x</code> for a floating-point variable is conventional and non-confusing in a restricted scope.</p>
-<h5 id="enforcement-384">Enforcement</h5>
+<h5 id="enforcement-385">Enforcement</h5>
 <p>???</p>
 <h3 id="anamerlnameanl8useaconsistentnamingstyle"><a name="Rl-name"></a>NL.8: Use a consistent naming style</h3>
 <p><strong>Rationale</strong>: Consistence in naming and naming style increases readability.</p>
-<h5 id="note-360">Note</h5>
+<h5 id="note-363">Note</h5>
 <p>There are many styles and when you use multiple libraries, you can't follow all their different conventions.
 Choose a "house style", but leave "imported" libraries with their original style.</p>
-<h5 id="example-370">Example</h5>
+<h5 id="example-371">Example</h5>
 <p>ISO Standard, use lower case only and digits, separate words with underscores:</p>
 <ul>
 <li><code>int</code></li>
@@ -15939,7 +15999,7 @@ Choose a "house style", but leave "imported" libraries with their original style
 <li><code>my_map</code></li>
 </ul>
 <p>Avoid double underscores <code>__</code>.</p>
-<h5 id="example-371">Example</h5>
+<h5 id="example-372">Example</h5>
 <p><a href="http://www.stroustrup.com/Programming/PPP-style.pdf">Stroustrup</a>:
 ISO Standard, but with upper case used for your own types and concepts:</p>
 <ul>
@@ -15947,7 +16007,7 @@ ISO Standard, but with upper case used for your own types and concepts:</p>
 <li><code>vector</code></li>
 <li><code>My_map</code></li>
 </ul>
-<h5 id="example-372">Example</h5>
+<h5 id="example-373">Example</h5>
 <p>CamelCase: capitalize each word in a multi-word identifier:</p>
 <ul>
 <li><code>int</code></li>
@@ -15956,41 +16016,41 @@ ISO Standard, but with upper case used for your own types and concepts:</p>
 <li><code>myMap</code></li>
 </ul>
 <p>Some conventions capitalize the first letter, some don't.</p>
-<h5 id="note-361">Note</h5>
+<h5 id="note-364">Note</h5>
 <p>Try to be consistent in your use of acronyms and lengths of identifiers:</p>
 <pre><code>int mtbf {12};
 int mean_time_between_failures {12}; // make up your mind
 </code></pre>
-<h5 id="enforcement-385">Enforcement</h5>
+<h5 id="enforcement-386">Enforcement</h5>
 <p>Would be possible except for the use of libraries with varying conventions.</p>
 <h3 id="anamerlallcapsanl9useall_capsformacronamesonly"><a name="Rl-all-caps"></a>NL.9: Use <code>ALL_CAPS</code> for macro names only</h3>
-<h5 id="reason-421">Reason</h5>
+<h5 id="reason-422">Reason</h5>
 <p>To avoid confusing macros with names that obey scope and type rules.</p>
-<h5 id="example-373">Example</h5>
+<h5 id="example-374">Example</h5>
 <pre><code>void f()
 {
     const int SIZE{1000};  // Bad, use 'size' instead
     int v[SIZE];
 }
 </code></pre>
-<h5 id="note-362">Note</h5>
+<h5 id="note-365">Note</h5>
 <p>This rule applies to non-macro symbolic constants:</p>
 <pre><code>enum bad { BAD, WORSE, HORRIBLE }; // BAD
 </code></pre>
-<h5 id="enforcement-386">Enforcement</h5>
+<h5 id="enforcement-387">Enforcement</h5>
 <ul>
 <li>Flag macros with lower-case letters</li>
 <li>Flag <code>ALL_CAPS</code> non-macro names</li>
 </ul>
 <h3 id="anamerlcamelanl10avoidcamelcase"><a name="Rl-camel"></a>NL.10: Avoid CamelCase</h3>
-<h5 id="reason-422">Reason</h5>
+<h5 id="reason-423">Reason</h5>
 <p>The use of underscores to separate parts of a name is the original C and C++ style and used in the C++ Standard Library.
 If you prefer CamelCase, you have to choose among different flavors of camelCase.</p>
-<h5 id="note-363">Note</h5>
+<h5 id="note-366">Note</h5>
 <p>This rule is a default to use only if you have a choice.
 Often, you don't have a choice and must follow an established style for <a href="#Rl-name">consistency</a>.
 The need for consistency beats personal taste.</p>
-<h5 id="example-374">Example</h5>
+<h5 id="example-375">Example</h5>
 <p><a href="http://www.stroustrup.com/Programming/PPP-style.pdf">Stroustrup</a>:
 ISO Standard, but with upper case used for your own types and concepts:</p>
 <ul>
@@ -15998,10 +16058,10 @@ ISO Standard, but with upper case used for your own types and concepts:</p>
 <li><code>vector</code></li>
 <li><code>My_map</code></li>
 </ul>
-<h5 id="enforcement-387">Enforcement</h5>
+<h5 id="enforcement-388">Enforcement</h5>
 <p>Impossible.</p>
 <h3 id="anamerlspaceanl15usespacessparingly"><a name="Rl-space"></a>NL.15: Use spaces sparingly</h3>
-<h5 id="reason-423">Reason</h5>
+<h5 id="reason-424">Reason</h5>
 <p>Too much space makes the text larger and distracts.</p>
 <h5 id="examplebad-142">Example, bad</h5>
 <pre><code>#include &lt; map &gt;
@@ -16011,7 +16071,7 @@ int main(int argc, char * argv [ ])
     // ...
 }
 </code></pre>
-<h5 id="example-375">Example</h5>
+<h5 id="example-376">Example</h5>
 <pre><code>#include &lt;map&gt;
 
 int main(int argc, char* argv[])
@@ -16019,33 +16079,33 @@ int main(int argc, char* argv[])
     // ...
 }
 </code></pre>
-<h5 id="note-364">Note</h5>
+<h5 id="note-367">Note</h5>
 <p>Some IDEs have their own opinions and add distracting space.</p>
-<h5 id="note-365">Note</h5>
+<h5 id="note-368">Note</h5>
 <p>We value well-placed whitespace as a significant help for readability. Just don't overdo it.</p>
 <h3 id="anamerlliteralsanl11makeliteralsreadable"><a name="Rl-literals"></a>NL.11: Make literals readable</h3>
-<h5 id="reason-424">Reason</h5>
+<h5 id="reason-425">Reason</h5>
 <p>Readability.</p>
-<h5 id="example-376">Example</h5>
+<h5 id="example-377">Example</h5>
 <p>Use digit separators to avoid long strings of digits</p>
 <pre><code>auto c = 299'792'458; // m/s2
 auto q2 = 0b0000'1111'0000'0000;
 auto ss_number = 123'456'7890;
 </code></pre>
-<h5 id="example-377">Example</h5>
+<h5 id="example-378">Example</h5>
 <p>Use literal suffixes where clarification is needed</p>
 <pre><code>auto hello = "Hello!"s; // a std::string
 auto world = "world";   // a C-style string
 auto interval = 100ms;  // using &lt;chrono&gt;
 </code></pre>
-<h5 id="note-366">Note</h5>
+<h5 id="note-369">Note</h5>
 <p>Literals should not be sprinkled all over the code as <a href="#Res-magic">"magic constants"</a>,
 but it is still a good idea to make them readable where they are defined.
 It is easy to make a typo in a long string of integers.</p>
-<h5 id="enforcement-388">Enforcement</h5>
+<h5 id="enforcement-389">Enforcement</h5>
 <p>Flag long digit sequences. The trouble is to define "long"; maybe 7.</p>
 <h3 id="anamerlorderanl16useaconventionalclassmemberdeclarationorder"><a name="Rl-order"></a>NL.16: Use a conventional class member declaration order</h3>
-<h5 id="reason-425">Reason</h5>
+<h5 id="reason-426">Reason</h5>
 <p>A conventional order of members improves readability.</p>
 <p>When declaring a class use the following order</p>
 <ul>
@@ -16055,7 +16115,7 @@ It is easy to make a typo in a long string of integers.</p>
 <li>data</li>
 </ul>
 <p>Use the <code>public</code> before <code>protected</code> before <code>private</code> order.</p>
-<h5 id="example-378">Example</h5>
+<h5 id="example-379">Example</h5>
 <pre><code>class X {
 public:
     // interface
@@ -16065,7 +16125,7 @@ private:
     // implementation details
 };
 </code></pre>
-<h5 id="example-379">Example</h5>
+<h5 id="example-380">Example</h5>
 <p>Sometimes, the default order of members conflicts with a desire to separate the public interface from implementation details.
 In such cases, private types and functions can be placed with private data.</p>
 <pre><code>class X {
@@ -16089,14 +16149,14 @@ public:
 </code></pre>
 <p>The use of macros to declare groups of members often leads to violation of any ordering rules.
 However, macros obscures what is being expressed anyway.</p>
-<h5 id="enforcement-389">Enforcement</h5>
+<h5 id="enforcement-390">Enforcement</h5>
 <p>Flag departures from the suggested order. There will be a lot of old code that doesn't follow this rule.</p>
 <h3 id="anamerlknranl17usekrderivedlayout"><a name="Rl-knr"></a>NL.17: Use K&amp;R-derived layout</h3>
-<h5 id="reason-426">Reason</h5>
+<h5 id="reason-427">Reason</h5>
 <p>This is the original C and C++ layout. It preserves vertical space well. It distinguishes different language constructs (such as functions and classes) well.</p>
-<h5 id="note-367">Note</h5>
+<h5 id="note-370">Note</h5>
 <p>In the context of C++, this style is often called "Stroustrup".</p>
-<h5 id="example-380">Example</h5>
+<h5 id="example-381">Example</h5>
 <pre><code>struct Cable {
     int x;
     // ...
@@ -16132,65 +16192,65 @@ double foo(int x)
 }
 </code></pre>
 <p>Note the space between <code>if</code> and <code>(</code></p>
-<h5 id="note-368">Note</h5>
-<p>Use separate lines for each statement, the branches of an <code>if</code>, and the body of a <code>for</code>.</p>
-<h5 id="note-369">Note</h5>
-<p>The <code>{</code> for a <code>class</code> and a <code>struct</code> is <em>not</em> on a separate line, but the <code>{</code> for a function is.</p>
-<h5 id="note-370">Note</h5>
-<p>Capitalize the names of your user-defined types to distinguish them from standards-library types.</p>
 <h5 id="note-371">Note</h5>
+<p>Use separate lines for each statement, the branches of an <code>if</code>, and the body of a <code>for</code>.</p>
+<h5 id="note-372">Note</h5>
+<p>The <code>{</code> for a <code>class</code> and a <code>struct</code> is <em>not</em> on a separate line, but the <code>{</code> for a function is.</p>
+<h5 id="note-373">Note</h5>
+<p>Capitalize the names of your user-defined types to distinguish them from standards-library types.</p>
+<h5 id="note-374">Note</h5>
 <p>Do not capitalize function names.</p>
-<h5 id="enforcement-390">Enforcement</h5>
+<h5 id="enforcement-391">Enforcement</h5>
 <p>If you want enforcement, use an IDE to reformat.</p>
 <h3 id="anamerlptranl18usecstyledeclaratorlayout"><a name="Rl-ptr"></a>NL.18: Use C++-style declarator layout</h3>
-<h5 id="reason-427">Reason</h5>
+<h5 id="reason-428">Reason</h5>
 <p>The C-style layout emphasizes use in expressions and grammar, whereas the C++-style emphasizes types.
 The use in expressions argument doesn't hold for references.</p>
-<h5 id="example-381">Example</h5>
+<h5 id="example-382">Example</h5>
 <pre><code>T&amp; operator[](size_t);   // OK
 T &amp;operator[](size_t);   // just strange
 T &amp; operator[](size_t);   // undecided
 </code></pre>
-<h5 id="enforcement-391">Enforcement</h5>
+<h5 id="enforcement-392">Enforcement</h5>
 <p>Impossible in the face of history.</p>
 <h3 id="anamerlmisreadanl19avoidnamesthatareeasilymisread"><a name="Rl-misread"></a>NL.19: Avoid names that are easily misread</h3>
-<h5 id="reason-428">Reason</h5>
+<h5 id="reason-429">Reason</h5>
 <p>Readability.
 Not everyone has screens and printers that make it easy to distinguish all characters.
 We easily confuse similarly spelled and slightly misspelled words.</p>
-<h5 id="example-382">Example</h5>
+<h5 id="example-383">Example</h5>
 <pre><code>int oO01lL = 6; // bad
 
 int splunk = 7;
 int splonk = 8; // bad: splunk and splonk are easily confused
 </code></pre>
-<h5 id="enforcement-392">Enforcement</h5>
+<h5 id="enforcement-393">Enforcement</h5>
 <p>???</p>
 <h3 id="anamerlstmtanl20dontplacetwostatementsonthesameline"><a name="Rl-stmt"></a>NL.20: Don't place two statements on the same line</h3>
-<h5 id="reason-429">Reason</h5>
+<h5 id="reason-430">Reason</h5>
 <p>Readability.
 It is really easy to overlook a statement when there is more on a line.</p>
-<h5 id="example-383">Example</h5>
+<h5 id="example-384">Example</h5>
 <pre><code>int x = 7; char* p = 29;    // don't
 int x = 7; f(x);  ++x;      // don't
 </code></pre>
-<h5 id="enforcement-393">Enforcement</h5>
+<h5 id="enforcement-394">Enforcement</h5>
 <p>Easy.</p>
 <h3 id="anamerldclanl21declareonenameonlyperdeclaration"><a name="Rl-dcl"></a>NL.21: Declare one name (only) per declaration</h3>
-<h5 id="reason-430">Reason</h5>
+<h5 id="reason-431">Reason</h5>
 <p>Readability.
 Minimizing confusion with the declarator syntax.</p>
-<h5 id="note-372">Note</h5>
+<h5 id="note-375">Note</h5>
 <p>For details, see <a href="#Res-name-one">ES.10</a>.</p>
 <h3 id="anamerlvoidanl25dontusevoidasanargumenttype"><a name="Rl-void"></a>NL.25: Don't use <code>void</code> as an argument type</h3>
-<h5 id="reason-431">Reason</h5>
+<h5 id="reason-432">Reason</h5>
 <p>It's verbose and only needed where C compatibility matters.</p>
-<h5 id="example-384">Example</h5>
+<h5 id="example-385">Example</h5>
 <pre><code>void f(void);   // bad
 
 void g();       // better
 </code></pre>
-<h5 id="note-373">Note</h5>
+<h5 id="note-376">Note</h5>
 <p>Even Dennis Ritchie deemed <code>void f(void)</code> an abomination.
 You can make an argument for that abomination in C when function prototypes were rare so that banning:</p>
 <pre><code>int f();
@@ -16198,21 +16258,21 @@ f(1, 2, "weird but valid C89");   // hope that f() is defined int f(a, b, c) cha
 </code></pre>
 <p>would have caused major problems, but not in the 21st century and in C++.</p>
 <h3 id="anamerlconstanl26useconventionalconstnotation"><a name="Rl-const"></a>NL.26: Use conventional <code>const</code> notation</h3>
-<h5 id="reason-432">Reason</h5>
+<h5 id="reason-433">Reason</h5>
 <p>Conventional notation is more familiar to more programmers.
 Consistency in large code bases.</p>
-<h5 id="example-385">Example</h5>
+<h5 id="example-386">Example</h5>
 <pre><code>const int x = 7;    // OK
 int const y = 9;    // bad
 
 const int *const p = nullptr;   // OK, constant pointer to constant int
 int const *const p = nullptr;   // bad, constant pointer to constant int
 </code></pre>
-<h5 id="note-374">Note</h5>
+<h5 id="note-377">Note</h5>
 <p>We are well aware that you could claim the "bad" examples more logical than the ones marked "OK",
 but they also confuse more people, especially novices relying on teaching material using the far more common, conventional OK style.</p>
 <p>As ever, remember that the aim of these naming and layout rules is consistency and that aesthetics vary immensely.</p>
-<h5 id="enforcement-394">Enforcement</h5>
+<h5 id="enforcement-395">Enforcement</h5>
 <p>Flag <code>const</code> used as a suffix for a type.</p>
 <h1 id="anamesfaqafaqanswerstofrequentlyaskedquestions"><a name="S-faq"></a>FAQ: Answers to frequently asked questions</h1>
 <p>This section covers answers to frequently asked questions about these guidelines.</p>
@@ -16391,7 +16451,7 @@ shared_ptr&lt;D&gt; p = D::Create&lt;D&gt;();    // creating a D object
 <p><strong>References</strong>: <a href="#Alexandrescu01">[Alexandrescu01]</a> §3, <a href="#Boost">[Boost]</a>, <a href="#Dewhurst03">[Dewhurst03]</a> §75, <a href="#Meyers97">[Meyers97]</a> §46, <a href="#Stroustrup00">[Stroustrup00]</a> §15.4.3, <a href="#Taligent94">[Taligent94]</a></p>
 <h3 id="anamesddtoradiscussionmakebaseclassdestructorspublicandvirtualorprotectedandnonvirtual"><a name="Sd-dtor"></a>Discussion: Make base class destructors public and virtual, or protected and nonvirtual</h3>
 <p>Should destruction behave virtually? That is, should destruction through a pointer to a <code>base</code> class be allowed? If yes, then <code>base</code>'s destructor must be public in order to be callable, and virtual otherwise calling it results in undefined behavior. Otherwise, it should be protected so that only derived classes can invoke it in their own destructors, and nonvirtual since it doesn't need to behave virtually virtual.</p>
-<h5 id="example-386">Example</h5>
+<h5 id="example-387">Example</h5>
 <p>The common case for a base class is that it's intended to have publicly derived classes, and so calling code is just about sure to use something like a <code>shared_ptr&lt;base&gt;</code>:</p>
 <pre><code>class Base {
 public:
@@ -16419,7 +16479,7 @@ protected:
 template&lt;class Policy&gt;
 class customizable : Policy { /* ... */ }; // note: private inheritance
 </code></pre>
-<h5 id="note-375">Note</h5>
+<h5 id="note-378">Note</h5>
 <p>This simple guideline illustrates a subtle issue and reflects modern uses of inheritance and object-oriented design principles.</p>
 <p>For a base class <code>Base</code>, calling code might try to destroy derived objects through pointers to <code>Base</code>, such as when using a <code>unique_ptr&lt;Base&gt;</code>. If <code>Base</code>'s destructor is public and nonvirtual (the default), it can be accidentally called on a pointer that actually points to a derived object, in which case the behavior of the attempted deletion is undefined. This state of affairs has led older coding standards to impose a blanket requirement that all base class destructors must be virtual. This is overkill (even if it is the common case); instead, the rule should be to make base class destructors virtual if and only if they are public.</p>
 <p>To write a base class is to define an abstraction (see Items 35 through 37). Recall that for each member function participating in that abstraction, you need to decide:</p>
@@ -16446,7 +16506,7 @@ class customizable : Policy { /* ... */ }; // note: private inheritance
 <p>???</p>
 <h3 id="anamesdneverfailadiscussiondestructorsdeallocationandswapmustneverfail"><a name="Sd-never-fail"></a>Discussion: Destructors, deallocation, and swap must never fail</h3>
 <p>Never allow an error to be reported from a destructor, a resource deallocation function (e.g., <code>operator delete</code>), or a <code>swap</code> function using <code>throw</code>. It is nearly impossible to write useful code if these operations can fail, and even if something does go wrong it nearly never makes any sense to retry. Specifically, types whose destructors may throw an exception are flatly forbidden from use with the C++ Standard Library. Most destructors are now implicitly <code>noexcept</code> by default.</p>
-<h5 id="example-387">Example</h5>
+<h5 id="example-388">Example</h5>
 <pre><code>class Nefarious {
 public:
     Nefarious()  { /* code that could throw */ }   // ok
@@ -16491,7 +16551,7 @@ void test(string&amp; s)
 </code></pre>
 <p>The standard library forbids all destructors used with it from throwing. You can't store <code>Nefarious</code> objects in standard containers or use them with any other part of the standard library.</p></li>
 </ol>
-<h5 id="note-376">Note</h5>
+<h5 id="note-379">Note</h5>
 <p>These are key functions that must not fail because they are necessary for the two key operations in transactional programming: to back out work if problems are encountered during processing, and to commit work if no problems occur. If there's no way to safely back out using no-fail operations, then no-fail rollback is impossible to implement. If there's no way to safely commit state changes using a no-fail operation (notably, but not limited to, <code>swap</code>), then no-fail commit is impossible to implement.</p>
 <p>Consider the following advice and requirements found in the C++ Standard:</p>
 <blockquote>
@@ -16510,13 +16570,13 @@ Besides destructors and deallocation functions, common error-safety techniques r
 <p>When using exceptions as your error handling mechanism, always document this behavior by declaring these functions <code>noexcept</code>. (See Item 75.)</p>
 <p><strong>References</strong>: <a href="#CplusplusCS">[C++CS]</a> Item 51; <a href="#Cplusplus03">[C++03]</a> §15.2(3), §17.4.4.8(3), <a href="#Meyers96">[Meyers96]</a> §11, <a href="#Stroustrup00">[Stroustrup00]</a> §14.4.7, §E.2-4, <a href="#Sutter00">[Sutter00]</a> §8, §16, <a href="#Sutter02">[Sutter02]</a> §18-19</p>
 <h2 id="anamesdconsistentadefinecopymoveanddestroyconsistently"><a name="Sd-consistent"></a>Define Copy, move, and destroy consistently</h2>
-<h5 id="reason-433">Reason</h5>
+<h5 id="reason-434">Reason</h5>
 <p>???</p>
-<h5 id="note-377">Note</h5>
+<h5 id="note-380">Note</h5>
 <p>If you define a copy constructor, you must also define a copy assignment operator.</p>
-<h5 id="note-378">Note</h5>
+<h5 id="note-381">Note</h5>
 <p>If you define a move constructor, you must also define a move assignment operator.</p>
-<h5 id="example-388">Example</h5>
+<h5 id="example-389">Example</h5>
 <pre><code>class X {
     // ...
 public:
@@ -16566,7 +16626,7 @@ X test()
 }
 </code></pre>
 <p>If you define any of the copy constructor, copy assignment operator, or destructor, you probably should define the others.</p>
-<h5 id="note-379">Note</h5>
+<h5 id="note-382">Note</h5>
 <p>If you need to define any of these five functions, it means you need it to do more than its default behavior -- and the five are asymmetrically interrelated. Here's how:</p>
 <ul>
 <li>If you write/disable either of the copy constructor or the copy assignment operator, you probably need to do the same for the other: If one does "special" work, probably so should the other because the two functions should have similar effects. (See Item 53, which expands on this point in isolation.)</li>
@@ -16591,10 +16651,10 @@ In a class holding a reference, you likely need to write the copy constructor an
 <li><a href="#Cr-list">If a class is a container, give it an initializer-list constructor</a></li>
 </ul>
 <h3 id="anamecrsafetyadiscussionprovidestrongresourcesafetythatisneverleakanythingthatyouthinkofasaresource"><a name="Cr-safety"></a>Discussion: Provide strong resource safety; that is, never leak anything that you think of as a resource</h3>
-<h5 id="reason-434">Reason</h5>
+<h5 id="reason-435">Reason</h5>
 <p>Prevent leaks. Leaks can lead to performance degradation, mysterious error, system crashes, and security violations.</p>
 <p><strong>Alternative formulation</strong>: Have every resource represented as an object of some class managing its lifetime.</p>
-<h5 id="example-389">Example</h5>
+<h5 id="example-390">Example</h5>
 <pre><code>template&lt;class T&gt;
 class Vector {
 // ...
@@ -16604,15 +16664,15 @@ private:
 };
 </code></pre>
 <p>This class is a resource handle. It manages the lifetime of the <code>T</code>s. To do so, <code>Vector</code> must define or delete <a href="???">the set of special operations</a> (constructors, a destructor, etc.).</p>
-<h5 id="example-390">Example</h5>
+<h5 id="example-391">Example</h5>
 <pre><code>??? "odd" non-memory resource ???
 </code></pre>
-<h5 id="enforcement-395">Enforcement</h5>
+<h5 id="enforcement-396">Enforcement</h5>
 <p>The basic technique for preventing leaks is to have every resource owned by a resource handle with a suitable destructor. A checker can find "naked <code>new</code>s". Given a list of C-style allocation functions (e.g., <code>fopen()</code>), a checker can also find uses that are not managed by a resource handle. In general, "naked pointers" can be viewed with suspicion, flagged, and/or analyzed. A complete list of resources cannot be generated without human input (the definition of "a resource" is necessarily too general), but a tool can be "parameterized" with a resource list.</p>
 <h3 id="anamecrneveradiscussionneverthrowwhileholdingaresourcenotownedbyahandle"><a name="Cr-never"></a>Discussion: Never throw while holding a resource not owned by a handle</h3>
-<h5 id="reason-435">Reason</h5>
+<h5 id="reason-436">Reason</h5>
 <p>That would be a leak.</p>
-<h5 id="example-391">Example</h5>
+<h5 id="example-392">Example</h5>
 <pre><code>void f(int i)
 {
     FILE* f = fopen("a file", "r");
@@ -16641,20 +16701,20 @@ private:
     // ...
 }
 </code></pre>
-<h5 id="enforcement-396">Enforcement</h5>
+<h5 id="enforcement-397">Enforcement</h5>
 <p>A checker must consider all "naked pointers" suspicious.
 A checker probably must rely on a human-provided list of resources.
 For starters, we know about the standard-library containers, <code>string</code>, and smart pointers.
 The use of <code>span</code> and <code>string_span</code> should help a lot (they are not resource handles).</p>
 <h3 id="anamecrrawadiscussionarawpointerorreferenceisneveraresourcehandle"><a name="Cr-raw"></a>Discussion: A "raw" pointer or reference is never a resource handle</h3>
-<h5 id="reason-436">Reason</h5>
+<h5 id="reason-437">Reason</h5>
 <p>To be able to distinguish owners from views.</p>
-<h5 id="note-380">Note</h5>
+<h5 id="note-383">Note</h5>
 <p>This is independent of how you "spell" pointer: <code>T*</code>, <code>T&amp;</code>, <code>Ptr&lt;T&gt;</code> and <code>Range&lt;T&gt;</code> are not owners.</p>
 <h3 id="anamecroutliveadiscussionneverletapointeroutlivetheobjectitpointsto"><a name="Cr-outlive"></a>Discussion: Never let a pointer outlive the object it points to</h3>
-<h5 id="reason-437">Reason</h5>
+<h5 id="reason-438">Reason</h5>
 <p>To avoid extremely hard-to-find errors. Dereferencing such a pointer is undefined behavior and could lead to violations of the type system.</p>
-<h5 id="example-392">Example</h5>
+<h5 id="example-393">Example</h5>
 <pre><code>string* bad()   // really bad
 {
     vector&lt;string&gt; v = { "This", "will", "cause", "trouble", "!" };
@@ -16673,12 +16733,12 @@ void use()
 }
 </code></pre>
 <p>The <code>string</code>s of <code>v</code> are destroyed upon exit from <code>bad()</code> and so is <code>v</code> itself. The returned pointer points to unallocated memory on the free store. This memory (pointed into by <code>p</code>) may have been reallocated by the time <code>*p</code> is executed. There may be no <code>string</code> to read and a write through <code>p</code> could easily corrupt objects of unrelated types.</p>
-<h5 id="enforcement-397">Enforcement</h5>
+<h5 id="enforcement-398">Enforcement</h5>
 <p>Most compilers already warn about simple cases and has the information to do more. Consider any pointer returned from a function suspect. Use containers, resource handles, and views (e.g., <code>span</code> known not to be resource handles) to lower the number of cases to be examined. For starters, consider every class with a destructor as resource handle.</p>
 <h3 id="anamecrtemplatesadiscussionusetemplatestoexpresscontainersandotherresourcehandles"><a name="Cr-templates"></a>Discussion: Use templates to express containers (and other resource handles)</h3>
-<h5 id="reason-438">Reason</h5>
+<h5 id="reason-439">Reason</h5>
 <p>To provide statically type-safe manipulation of elements.</p>
-<h5 id="example-393">Example</h5>
+<h5 id="example-394">Example</h5>
 <pre><code>template&lt;typename T&gt; class Vector {
     // ...
     T* elem;   // point to sz elements of type T
@@ -16686,10 +16746,10 @@ void use()
 };
 </code></pre>
 <h3 id="anamecrvaluereturnadiscussionreturncontainersbyvaluerelyingonmoveorcopyelisionforefficiency"><a name="Cr-value-return"></a>Discussion: Return containers by value (relying on move or copy elision for efficiency)</h3>
-<h5 id="reason-439">Reason</h5>
+<h5 id="reason-440">Reason</h5>
 <p>To simplify code and eliminate a need for explicit memory management. To bring an object into a surrounding scope, thereby extending its lifetime.</p>
 <p><strong>See also</strong>: <a href="#Rf-out">F.20, the general item about "out" output values</a></p>
-<h5 id="example-394">Example</h5>
+<h5 id="example-395">Example</h5>
 <pre><code>vector&lt;int&gt; get_large_vector()
 {
     return ...;
@@ -16699,15 +16759,15 @@ auto v = get_large_vector(); //  return by value is ok, most modern compilers wi
 </code></pre>
 <h5 id="exception-56">Exception</h5>
 <p>See the Exceptions in <a href="#Rf-out">F.20</a>.</p>
-<h5 id="enforcement-398">Enforcement</h5>
+<h5 id="enforcement-399">Enforcement</h5>
 <p>Check for pointers and references returned from functions and see if they are assigned to resource handles (e.g., to a <code>unique_ptr</code>).</p>
 <h3 id="anamecrhandleadiscussionifaclassisaresourcehandleitneedsaconstructoradestructorandcopyandormoveoperations"><a name="Cr-handle"></a>Discussion: If a class is a resource handle, it needs a constructor, a destructor, and copy and/or move operations</h3>
-<h5 id="reason-440">Reason</h5>
+<h5 id="reason-441">Reason</h5>
 <p>To provide complete control of the lifetime of the resource. To provide a coherent set of operations on the resource.</p>
-<h5 id="example-395">Example</h5>
+<h5 id="example-396">Example</h5>
 <pre><code>??? Messing with pointers
 </code></pre>
-<h5 id="note-381">Note</h5>
+<h5 id="note-384">Note</h5>
 <p>If all members are resource handles, rely on the default special operations where possible.</p>
 <pre><code>template&lt;typename T&gt; struct Named {
     string name;
@@ -16715,12 +16775,12 @@ auto v = get_large_vector(); //  return by value is ok, most modern compilers wi
 };
 </code></pre>
 <p>Now <code>Named</code> has a default constructor, a destructor, and efficient copy and move operations, provided <code>T</code> has.</p>
-<h5 id="enforcement-399">Enforcement</h5>
+<h5 id="enforcement-400">Enforcement</h5>
 <p>In general, a tool cannot know if a class is a resource handle. However, if a class has some of <a href="#SS-ctor">the default operations</a>, it should have all, and if a class has a member that is a resource handle, it should be considered as resource handle.</p>
 <h3 id="anamecrlistadiscussionifaclassisacontainergiveitaninitializerlistconstructor"><a name="Cr-list"></a>Discussion: If a class is a container, give it an initializer-list constructor</h3>
-<h5 id="reason-441">Reason</h5>
+<h5 id="reason-442">Reason</h5>
 <p>It is common to need an initial set of elements.</p>
-<h5 id="example-396">Example</h5>
+<h5 id="example-397">Example</h5>
 <pre><code>template&lt;typename T&gt; class Vector {
 public:
     Vector(std::initializer_list&lt;T&gt;);
@@ -16729,7 +16789,7 @@ public:
 
 Vector&lt;string&gt; vs { "Nygaard", "Ritchie" };
 </code></pre>
-<h5 id="enforcement-400">Enforcement</h5>
+<h5 id="enforcement-401">Enforcement</h5>
 <p>When is a class a container? ???</p>
 <h1 id="anamestoolsaappendixdsupportingtools"><a name="S-tools"></a>Appendix D: Supporting tools</h1>
 <p>This section contains a list of tools that directly support adoption of the C++ Core Guidelines. This list is not intended to be an exhaustive list of tools
