@@ -3,3 +3,6 @@ scripts/nodesjs/build
 _site
 scripts/python/__pycache__
 scripts/python/*.pyc
+
+# VS Code
+.vs/
