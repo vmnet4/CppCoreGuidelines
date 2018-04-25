@@ -1,11 +1,11 @@
 <h1 id="anamemainaccoreguidelines"><a name="main"></a>C++ Core Guidelines</h1>
-<p>March 26, 2018</p>
+<p>April 16, 2018</p>
 <p>Editors:</p>
 <ul>
 <li><a href="http://www.stroustrup.com">Bjarne Stroustrup</a></li>
 <li><a href="http://herbsutter.com/">Herb Sutter</a></li>
 </ul>
-<p>This document is an early draft. It's known to be incomplet, incorrekt, and has lots of b<strong>a</strong>d <strong>for</strong>~mat~ting.
+<p>This is a living document under continuous improvement.
 Had it been an open-source (code) project, this would have been release 0.8.
 Copying, use, modification, and creation of derivative works from this project is licensed under an MIT-style license.
 Contributing to this project requires agreeing to a Contributor License. See the accompanying <a href="LICENSE">LICENSE</a> file for details.
@@ -16,7 +16,7 @@ When commenting, please note <a href="#S-introduction">the introduction</a> that
 The list of contributors is <a href="#SS-ack">here</a>.</p>
 <p>Problems:</p>
 <ul>
-<li>The sets of rules have not been thoroughly checked for completeness, consistency, or enforceability.</li>
+<li>The sets of rules have not been completely checked for completeness, consistency, or enforceability.</li>
 <li>Triple question marks (???) mark known missing information</li>
 <li>Update reference sections; many pre-C++11 sources are too old.</li>
 <li>For a more-or-less up-to-date to-do list see: <a href="#S-unclassified">To-do: Unclassified proto-rules</a></li>
@@ -1817,7 +1817,7 @@ Functions are the most critical part in most interfaces, so see the interface ru
 <li><a href="#Rf-conventional">F.15: Prefer simple and conventional ways of passing information</a></li>
 <li><a href="#Rf-in">F.16: For "in" parameters, pass cheaply-copied types by value and others by reference to <code>const</code></a></li>
 <li><a href="#Rf-inout">F.17: For "in-out" parameters, pass by reference to non-<code>const</code></a></li>
-<li><a href="#Rf-consume">F.18: For "consume" parameters, pass by <code>X&amp;&amp;</code> and <code>std::move</code> the parameter</a></li>
+<li><a href="#Rf-consume">F.18: For "will-move-from" parameters, pass by <code>X&amp;&amp;</code> and <code>std::move</code> the parameter</a></li>
 <li><a href="#Rf-forward">F.19: For "forward" parameters, pass by <code>TP&amp;&amp;</code> and only <code>std::forward</code> the parameter</a></li>
 <li><a href="#Rf-out">F.20: For "out" output values, prefer return values to output parameters</a></li>
 <li><a href="#Rf-out-multi">F.21: To return multiple "out" values, prefer returning a tuple or struct</a></li>
@@ -2242,7 +2242,7 @@ void f4(const int&amp; x);     // bad: overhead on access in f4()
 <ul>
 <li>If the function is going to unconditionally move from the argument, take it by <code>&amp;&amp;</code>. See <a href="#Rf-consume">F.18</a>.</li>
 <li>If the function is going to keep a copy of the argument, in addition to passing by <code>const&amp;</code> (for lvalues),
-add an overload that passes the parameter by <code>&amp;&amp;</code> (for rvalues) and in the body <code>std::move</code>s it to its destination. Essentially this overloads a "consume"; see <a href="#Rf-consume">F.18</a>.</li>
+add an overload that passes the parameter by <code>&amp;&amp;</code> (for rvalues) and in the body <code>std::move</code>s it to its destination. Essentially this overloads a "will-move-from"; see <a href="#Rf-consume">F.18</a>.</li>
 <li>In special cases, such as multiple "input + copy" parameters, consider using perfect forwarding. See <a href="#Rf-forward">F.19</a>.</li>
 </ul>
 <h5 id="example-41">Example</h5>
@@ -2251,7 +2251,7 @@ add an overload that passes the parameter by <code>&amp;&amp;</code> (for rvalue
 // suffix is input-only but not as cheap as an int, pass by const&amp;
 string&amp; concatenate(string&amp;, const string&amp; suffix);
 
-void sink(unique_ptr&lt;widget&gt;);  // input only, and consumes the widget
+void sink(unique_ptr&lt;widget&gt;);  // input only, and moves ownership of the widget
 </code></pre>
 <p>Avoid "esoteric techniques" such as:</p>
 <ul>
@@ -2312,7 +2312,7 @@ A bad logic error can happen if the writer of <code>g()</code> incorrectly assum
 <li>(Moderate) ((Foundation)) Warn about functions regarding reference to non-<code>const</code> parameters that do <em>not</em> write to them.</li>
 <li>(Simple) ((Foundation)) Warn when a non-<code>const</code> parameter being passed by reference is <code>move</code>d.</li>
 </ul>
-<h3 id="anamerfconsumeaf18forconsumeparameterspassbyxandstdmovetheparameter"><a name="Rf-consume"></a>F.18: For "consume" parameters, pass by <code>X&amp;&amp;</code> and <code>std::move</code> the parameter</h3>
+<h3 id="anamerfconsumeaf18forwillmovefromparameterspassbyxandstdmovetheparameter"><a name="Rf-consume"></a>F.18: For "will-move-from" parameters, pass by <code>X&amp;&amp;</code> and <code>std::move</code> the parameter</h3>
 <h5 id="reason-45">Reason</h5>
 <p>It's efficient and eliminates bugs at the call site: <code>X&amp;&amp;</code> binds to rvalues, which requires an explicit <code>std::move</code> at the call site if passing an lvalue.</p>
 <h5 id="example-44">Example</h5>
@@ -4875,7 +4875,7 @@ void f()
     auto pi3 {make()};  // OK, move: the result of make() is an rvalue
 }
 </code></pre>
-<p>Note that deleted methods should be public.</p>
+<p>Note that deleted functions should be public.</p>
 <h5 id="enforcement-103">Enforcement</h5>
 <p>The elimination of a default operation is (should be) based on the desired semantics of the class. Consider such classes suspect, but maintain a "positive list" of classes where a human has asserted that the semantics is correct.</p>
 <h3 id="anamercctorvirtualac82dontcallvirtualfunctionsinconstructorsanddestructors"><a name="Rc-ctor-virtual"></a>C.82: Don't call virtual functions in constructors and destructors</h3>
@@ -6006,7 +6006,7 @@ class Dx : B {
 <p>The <code>dynamic_cast</code> conversion allows to test whether a pointer is pointing at a polymorphic object that has a given class in its hierarchy. Since failure to find the class merely returns a null value, it can be tested during run time. This allows writing code that can choose alternative paths depending on the results.</p>
 <p>Contrast with <a href="#Rh-ptr-cast">C.147</a>, where failure is an error, and should not be used for conditional execution.</p>
 <h5 id="example-118">Example</h5>
-<p>The example below describes the <code>add</code> method of a <code>Shape_owner</code> that takes ownership of constructed <code>Shape</code> objects. The objects are also sorted into views, according to their geometric attributes.
+<p>The example below describes the <code>add</code> function of a <code>Shape_owner</code> that takes ownership of constructed <code>Shape</code> objects. The objects are also sorted into views, according to their geometric attributes.
 In this example, <code>Shape</code> does not inherit from <code>Geometric_attributes</code>. Only its subclasses do.</p>
 <pre><code>void add(Shape* const item)
 {
@@ -7385,7 +7385,7 @@ These smart pointers match the <code>Shared_ptr</code> concept, so these guideli
 <h5 id="reason-186">Reason</h5>
 <p>Using <code>unique_ptr</code> in this way both documents and enforces the function call's ownership transfer.</p>
 <h5 id="example-159">Example</h5>
-<pre><code>void sink(unique_ptr&lt;widget&gt;); // consumes the widget
+<pre><code>void sink(unique_ptr&lt;widget&gt;); // takes ownership of the widget
 
 void uses(widget*);            // just uses the widget
 </code></pre>
@@ -8898,7 +8898,7 @@ cout &lt;&lt; d &lt;&lt; ' ' &lt;&lt; *p &lt;&lt; ' ' &lt;&lt; *q &lt;&lt; '\n';
 </code></pre>
 <p>Surprised? I'm just glad I didn't crash the program.</p>
 <h5 id="note-200">Note</h5>
-<p>Programmers who write casts typically assume that they know what they are doing, 
+<p>Programmers who write casts typically assume that they know what they are doing,
 or that writing a cast makes the program "easier to read".
 In fact, they often disable the general rules for using values.
 Overload resolution and template instantiation usually pick the right function if there is a right function to pick.
@@ -9932,7 +9932,7 @@ Consequently, it is best to be specific about the comparison.</p>
 </code></pre>
 <p>is a common beginners error.
 If you use C-style strings, you must know the <code>&lt;cstring&gt;</code> functions well.
-Being verbose and writing </p>
+Being verbose and writing</p>
 <pre><code>if(strcmp(p1, p2) != 0) { ... }   // are the two C-style strings equal? (mistake!)
 </code></pre>
 <p>would not in itself save you.</p>
@@ -11653,7 +11653,7 @@ class My_type {
 <li>Resource leaks (including memory leaks)</li>
 <li>Bounds errors</li>
 <li>Lifetime errors (e.g., accessing an object after is has been <code>delete</code>d)</li>
-<li>Complexity errors (logical errors make likely by overly complex expression of ideas)</li>
+<li>Complexity errors (logical errors made likely by overly complex expression of ideas)</li>
 <li>Interface errors (e.g., an unexpected value is passed through an interface)</li>
 </ul>
 <p>Error-handling rule summary:</p>
@@ -12016,7 +12016,7 @@ void your_code()   // Don't
 </code></pre>
 <p><strong>See also</strong>: <a href="#Sd-???">Discussion</a></p>
 <h5 id="enforcement-279">Enforcement</h5>
-<p>Catch <code>throw</code> and <code>catch</code> of a built-in type. Maybe warn about <code>throw</code> and <code>catch</code> using an standard-library <code>exception</code> type. Obviously, exceptions derived from the <code>std::exception</code> hierarchy is fine.</p>
+<p>Catch <code>throw</code> and <code>catch</code> of a built-in type. Maybe warn about <code>throw</code> and <code>catch</code> using a standard-library <code>exception</code> type. Obviously, exceptions derived from the <code>std::exception</code> hierarchy are fine.</p>
 <h3 id="anamereexceptionrefae15catchexceptionsfromahierarchybyreference"><a name="Re-exception-ref"></a>E.15: Catch exceptions from a hierarchy by reference</h3>
 <h5 id="reason-308">Reason</h5>
 <p>To prevent slicing.</p>
@@ -12928,9 +12928,9 @@ It is better and simpler just to use <code>Sortable</code>:</p>
 <h5 id="reason-331">Reason</h5>
 <p><code>auto</code> is the weakest concept. Concept names convey more meaning than just <code>auto</code>.</p>
 <h5 id="exampleusingtsconcepts-1">Example (using TS concepts)</h5>
-<pre><code>vector&lt;string&gt; v;
+<pre><code>vector&lt;string&gt; v{ "abc", "xyz" };
 auto&amp; x = v.front();     // bad
-String&amp; s = v.begin();   // good (String is a GSL concept)
+String&amp; s = v.front();   // good (String is a GSL concept)
 </code></pre>
 <h5 id="enforcement-302">Enforcement</h5>
 <ul>
@@ -13805,8 +13805,8 @@ public:
     // ...
 };
 
-vector&lt;int&gt; vi;
-vector&lt;string&gt; vs;
+Vector&lt;int&gt; vi;
+Vector&lt;string&gt; vs;
 </code></pre>
 <p>It is probably a dumb idea to define a <code>sort</code> as a member function of a container, but it is not unheard of and it makes a good example of what not to do.</p>
 <p>Given this, the compiler cannot know if <code>vector&lt;int&gt;::sort()</code> is called, so it must generate code for it.
@@ -15630,9 +15630,9 @@ Note that the safety is intended to be complete when combined also with <a href=
 <p>An implementation of this profile shall recognize the following patterns in source code as non-conforming and issue a diagnostic.</p>
 <p>Type safety profile summary:</p>
 <ul>
-<li><a name="Pro-type-avoidcasts"></a>Type.1: <a href="#Res-casts">Avoid casts</a>:<br />
-<a name="Pro-type-reinterpretcast">a. </a>Don't use <code>reinterpret_cast</code>; A strict version of <a href="#Res-casts">Avoid casts</a> and <a href="#Res-casts-named">prefer named casts</a>.<br />
-<a name="Pro-type-arithmeticcast">b. </a>Don't use <code>static_cast</code> for arithmetic types; A strict version of <a href="#Res-casts">Avoid casts</a> and <a href="#Res-casts-named">prefer named casts</a>.<br />
+<li><a name="Pro-type-avoidcasts"></a>Type.1: <a href="#Res-casts">Avoid casts</a>:
+<a name="Pro-type-reinterpretcast">a. </a>Don't use <code>reinterpret_cast</code>; A strict version of <a href="#Res-casts">Avoid casts</a> and <a href="#Res-casts-named">prefer named casts</a>.
+<a name="Pro-type-arithmeticcast">b. </a>Don't use <code>static_cast</code> for arithmetic types; A strict version of <a href="#Res-casts">Avoid casts</a> and <a href="#Res-casts-named">prefer named casts</a>.
 <a name="Pro-type-identitycast">c. </a>Don't cast between pointer types where the source type and the target type are the same; A strict version of <a href="#Res-casts">Avoid casts</a>.
 <a name="Pro-type-implicitpointercast">d. </a>Don't cast between pointer types when the conversion could be implicit; A strict version of <a href="#Res-casts">Avoid casts</a>.</li>
 <li><a name="Pro-type-downcast"></a>Type.2: Don't use <code>static_cast</code> to downcast:
@@ -15841,7 +15841,7 @@ IDEs and tools can help (as well as hinder).</p>
 <li><a href="#Rl-name-length">NL.7: Make the length of a name roughly proportional to the length of its scope</a></li>
 <li><a href="#Rl-name">NL.8: Use a consistent naming style</a></li>
 <li><a href="#Rl-all-caps">NL.9: Use <code>ALL_CAPS</code> for macro names only</a></li>
-<li><a href="#Rl-camel">NL.10: Avoid CamelCase</a></li>
+<li><a href="#Rl-camel">NL.10: Prefer <code>underscore_style</code> names</a></li>
 <li><a href="#Rl-literals">NL.11: Make literals readable</a></li>
 <li><a href="#Rl-space">NL.15: Use spaces sparingly</a></li>
 <li><a href="#Rl-order">NL.16: Use a conventional class member declaration order</a></li>
@@ -16042,10 +16042,9 @@ int mean_time_between_failures {12}; // make up your mind
 <li>Flag macros with lower-case letters</li>
 <li>Flag <code>ALL_CAPS</code> non-macro names</li>
 </ul>
-<h3 id="anamerlcamelanl10avoidcamelcase"><a name="Rl-camel"></a>NL.10: Avoid CamelCase</h3>
+<h3 id="anamerlcamelanl10preferunderscore_stylenames"><a name="Rl-camel"></a>NL.10: Prefer <code>underscore_style</code> names</h3>
 <h5 id="reason-423">Reason</h5>
-<p>The use of underscores to separate parts of a name is the original C and C++ style and used in the C++ Standard Library.
-If you prefer CamelCase, you have to choose among different flavors of camelCase.</p>
+<p>The use of underscores to separate parts of a name is the original C and C++ style and used in the C++ Standard Library.</p>
 <h5 id="note-366">Note</h5>
 <p>This rule is a default to use only if you have a choice.
 Often, you don't have a choice and must follow an established style for <a href="#Rl-name">consistency</a>.
@@ -16797,7 +16796,7 @@ that are helpful in writing good C++ code. If a tool is designed specifically to
 <h3 id="anamestclangtidyatoolsclangtidyhttpclangllvmorgextraclangtidycheckslisthtml"><a name="St-clangtidy"></a>Tools: <a href="http://clang.llvm.org/extra/clang-tidy/checks/list.html">Clang-tidy</a></h3>
 <p>Clang-tidy has a set of rules that specifically enforce the C++ Core Guidelines. These rules are named in the pattern <code>cppcoreguidelines-*</code>.</p>
 <h3 id="anamestcppcorecheckatoolscppcorecheckhttpsdocsmicrosoftcomenusvisualstudiocodequalityusingthecppcoreguidelinescheckers"><a name="St-cppcorecheck"></a>Tools: <a href="https://docs.microsoft.com/en-us/visualstudio/code-quality/using-the-cpp-core-guidelines-checkers">CppCoreCheck</a></h3>
-<p>The Microsoft compiler's C++ code analysis contains a set of rules specifically aimed at enforcement of the C++ Core Guidelines. </p>
+<p>The Microsoft compiler's C++ code analysis contains a set of rules specifically aimed at enforcement of the C++ Core Guidelines.</p>
 <h1 id="anamesglossaryaglossary"><a name="S-glossary"></a>Glossary</h1>
 <p>A relatively informal definition of terms used in the guidelines
 (based of the glossary in <a href="http://www.stroustrup.com/programming.html">Programming: Principles and Practice using C++</a>)</p>
@@ -16810,7 +16809,7 @@ A class is made abstract by having a pure virtual function or only protected con
 <li><em>address</em>: a value that allows us to find an object in a computer's memory.</li>
 <li><em>algorithm</em>: a procedure or formula for solving a problem; a finite series of computational steps to produce a result.</li>
 <li><em>alias</em>: an alternative way of referring to an object; often a name, pointer, or reference.</li>
-<li><em>API</em>: Application Programming Interface, a set of methods that form the communication between various software components. Contrast with ABI.</li>
+<li><em>API</em>: Application Programming Interface, a set of functions that form the communication between various software components. Contrast with ABI.</li>
 <li><em>application</em>: a program or a collection of programs that is considered an entity by its users.</li>
 <li><em>approximation</em>: something (e.g., a value or a design) that is close to the perfect or ideal (value or design).
 Often an approximation is a result of trade-offs among ideals.</li>
