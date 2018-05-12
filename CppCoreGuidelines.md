@@ -5066,7 +5066,7 @@ Leaving behind an invalid object is asking for trouble.
 ##### Example
 
     class X2 {
-        FILE* f;   // call init() before any other function
+        FILE* f;
         // ...
     public:
         X2(const string& name)
@@ -5090,7 +5090,7 @@ Leaving behind an invalid object is asking for trouble.
 ##### Example, bad
 
     class X3 {     // bad: the constructor leaves a non-valid object behind
-        FILE* f;   // call init() before any other function
+        FILE* f;   // call is_valid() before any other function
         bool valid;
         // ...
     public:
@@ -5292,7 +5292,7 @@ Being able to set a value to "the default" without operations that might fail si
 
 This is nice and general, but setting a `Vector0` to empty after an error involves an allocation, which may fail.
 Also, having a default `Vector` represented as `{new T[0], 0, 0}` seems wasteful.
-For example, `Vector0 v(100)` costs 100 allocations.
+For example, `Vector0<int> v[100]` costs 100 allocations.
 
 ##### Example
 
@@ -12673,7 +12673,7 @@ This makes surprises (and bugs) inevitable.
     for (int i = 0; i < 10; ++i) a[i] = i;
     vector<int> v(10);
     // compares signed to unsigned; some compilers warn, but we should not
-    for (gsl::index i = 0; v.size() < 10; ++i) v[i] = i;
+    for (gsl::index i = 0; i < v.size(); ++i) v[i] = i;
 
     int a2[-2];         // error: negative size
 
@@ -14145,7 +14145,7 @@ If the string is short (say 10 characters), the call of `modify1` can be surpris
 essentially all the cost is in the `thread` switch. If the string is long (say 1,000,000 characters), copying it twice
 is probably not a good idea.
 
-Note that this argument has nothing to do with `sync` as such. It applies equally to considerations about whether to use
+Note that this argument has nothing to do with `async` as such. It applies equally to considerations about whether to use
 message passing or shared memory.
 
 ##### Enforcement
@@ -14167,7 +14167,7 @@ safe way to ensure proper deletion.
 
 ##### Note
 
-* A static object (e.g. a global) can be shared because it is not owned in the sense that some thread is responsible for it's deletion.
+* A static object (e.g. a global) can be shared because it is not owned in the sense that some thread is responsible for its deletion.
 * An object on free store that is never to be deleted can be shared.
 * An object owned by one thread can be safely shared with another as long as that second thread doesn't outlive the owner.
 
@@ -19175,13 +19175,13 @@ Direct expression of an idea minimizes mistakes.
 
     auto pp1 = make_pair("Tokyo", 9.00);         // {C-style string,double} intended?
     pair<string, double> pp2 = {"Tokyo", 9.00};  // a bit verbose
-    auto pp3 = make_pair("Tokyo"s, 9.00);        // {std::string,double}    // C++17
+    auto pp3 = make_pair("Tokyo"s, 9.00);        // {std::string,double}    // C++14
     pair pp4 = {"Tokyo"s, 9.00};                 // {std::string,double}    // C++17
 
 
 ##### Note
 
-C++17
+C++14
 
 ##### Enforcement
 
