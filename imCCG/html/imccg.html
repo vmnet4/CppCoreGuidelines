@@ -3983,7 +3983,7 @@ The idiom of having constructors acquire resources and destructors release them 
 <p>Leaving behind an invalid object is asking for trouble.</p>
 <h5 id="example-82">Example</h5>
 <pre><code>class X2 {
-    FILE* f;   // call init() before any other function
+    FILE* f;
     // ...
 public:
     X2(const string&amp; name)
@@ -4006,7 +4006,7 @@ void f()
 </code></pre>
 <h5 id="examplebad-30">Example, bad</h5>
 <pre><code>class X3 {     // bad: the constructor leaves a non-valid object behind
-    FILE* f;   // call init() before any other function
+    FILE* f;   // call is_valid() before any other function
     bool valid;
     // ...
 public:
@@ -4174,7 +4174,7 @@ private:
 </code></pre>
 <p>This is nice and general, but setting a <code>Vector0</code> to empty after an error involves an allocation, which may fail.
 Also, having a default <code>Vector</code> represented as <code>{new T[0], 0, 0}</code> seems wasteful.
-For example, <code>Vector0 v(100)</code> costs 100 allocations.</p>
+For example, <code>Vector0&lt;int&gt; v[100]</code> costs 100 allocations.</p>
 <h5 id="example-84">Example</h5>
 <pre><code>template&lt;typename T&gt;
 // elem is nullptr or elem points to space-elem element allocated using new
@@ -10022,7 +10022,7 @@ This makes surprises (and bugs) inevitable.</p>
 for (int i = 0; i &lt; 10; ++i) a[i] = i;
 vector&lt;int&gt; v(10);
 // compares signed to unsigned; some compilers warn, but we should not
-for (gsl::index i = 0; v.size() &lt; 10; ++i) v[i] = i;
+for (gsl::index i = 0; i &lt; v.size(); ++i) v[i] = i;
 
 int a2[-2];         // error: negative size
 
@@ -11176,7 +11176,7 @@ whereas the implementation of <code>modify2</code> will need some form of lockin
 If the string is short (say 10 characters), the call of <code>modify1</code> can be surprisingly fast;
 essentially all the cost is in the <code>thread</code> switch. If the string is long (say 1,000,000 characters), copying it twice
 is probably not a good idea.</p>
-<p>Note that this argument has nothing to do with <code>sync</code> as such. It applies equally to considerations about whether to use
+<p>Note that this argument has nothing to do with <code>async</code> as such. It applies equally to considerations about whether to use
 message passing or shared memory.</p>
 <h5 id="enforcement-261">Enforcement</h5>
 <p>???</p>
@@ -11190,7 +11190,7 @@ safe way to ensure proper deletion.</p>
 </code></pre>
 <h5 id="note-247">Note</h5>
 <ul>
-<li>A static object (e.g. a global) can be shared because it is not owned in the sense that some thread is responsible for it's deletion.</li>
+<li>A static object (e.g. a global) can be shared because it is not owned in the sense that some thread is responsible for its deletion.</li>
 <li>An object on free store that is never to be deleted can be shared.</li>
 <li>An object owned by one thread can be safely shared with another as long as that second thread doesn't outlive the owner.</li>
 </ul>
@@ -15016,11 +15016,11 @@ and disables valuable optimizations.</p>
 <h5 id="example-356">Example</h5>
 <pre><code>auto pp1 = make_pair("Tokyo", 9.00);         // {C-style string,double} intended?
 pair&lt;string, double&gt; pp2 = {"Tokyo", 9.00};  // a bit verbose
-auto pp3 = make_pair("Tokyo"s, 9.00);        // {std::string,double}    // C++17
+auto pp3 = make_pair("Tokyo"s, 9.00);        // {std::string,double}    // C++14
 pair pp4 = {"Tokyo"s, 9.00};                 // {std::string,double}    // C++17
 </code></pre>
 <h5 id="note-351">Note</h5>
-<p>C++17</p>
+<p>C++14</p>
 <h5 id="enforcement-376">Enforcement</h5>
 <p>???</p>
 <h2 id="anamessioaslioiostream"><a name="SS-io"></a>SL.io: Iostream</h2>
