@@ -52,6 +52,7 @@ ASIC
 asio
 AST
 async
+AUTOSAR
 'B'
 b2
 BDE
@@ -240,6 +241,7 @@ impactful
 impl
 Impl
 implicitpointercast
+incform
 incomplet
 incorrekt
 increment1
@@ -319,6 +321,7 @@ Meyers96
 Meyers97
 microbenchmarks
 middleware
+MISRA
 mixin
 mixins
 mnemonizes
@@ -597,6 +600,7 @@ UTF
 util
 v's
 v1
+v17
 v2
 va
 ValueType
