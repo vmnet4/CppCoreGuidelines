@@ -97,6 +97,7 @@ completers
 componentization
 composability
 composable
+ComputationCache
 conceptsTS
 cond
 const
@@ -104,7 +105,9 @@ Const
 constcast
 constexpr
 constness
+constref
 copy2
+coro
 CORBA
 cout
 CP
@@ -137,6 +140,7 @@ d2
 D2
 d2's
 dag
+DataRecord
 dcl
 dd
 de
@@ -213,6 +217,7 @@ GitHub
 GOTW
 gp
 GPLv3
+grep
 gsl
 GSL
 GSL's
@@ -220,6 +225,7 @@ gx
 handcoded
 Henricson
 Henricson97
+Herlihy
 hh
 hier
 hierclass
@@ -271,6 +277,7 @@ Jiangang
 jmp
 join's
 JSF
+jthread
 Juhl
 knr
 Koenig97
@@ -288,6 +295,7 @@ Lomow
 longjmp
 LSP
 lst
+Luchangco
 lvalue
 lvalues
 m1
@@ -335,11 +343,14 @@ Murray93
 mutex
 mutexes
 mx
+MyCustomError
+MyException
 myMap
 MyMap
 myset
 myX
 n'
+naïvely
 namespace
 namespaces
 Namespaces
@@ -349,6 +360,7 @@ Naumann
 ness
 newdelete
 nh
+Nir
 NL
 nodiscard
 noexcept
@@ -438,12 +450,14 @@ rcon
 Rcon
 Rconc
 Rconst
+rcoro
 Rcpl
 *realtime
 Rec2
 refactor
 refactored
 refcount
+refcounted
 regex
 Regex
 RegularFunction
@@ -465,6 +479,7 @@ retryable
 *Re-usability
 reusability
 Reusability
+rf
 Ri
 Rl
 rnd
@@ -474,6 +489,7 @@ Rouquette
 Rp
 Rper
 Rr
+rr
 RRconc
 Rsl
 Rstr
@@ -496,11 +512,14 @@ SemiRegular
 Sergey
 Sewell
 SFINAE
+Shavit
+sharedFoo
 sharedness
 sharedptrparam
 'sharedptrparam'
 setjmp
 SignedIntegral
+signedness
 simpleFunc
 'size'
 sizeof
@@ -513,6 +532,7 @@ smartptrs
 SMS
 Sommerlad
 SomeLargeType
+SomeOtherFunction
 specialization2
 spinlock
 splonk
@@ -539,6 +559,8 @@ Stroustrup15
 Stroustrup94
 Stroustrup's
 struct
+structs
+subobjects
 suboperations
 subsetting
 sum1
@@ -585,6 +607,7 @@ u2
 UDLs
 unaliased
 uncompromised
+uncopyable
 underuse
 undetached
 unencapsulated
@@ -631,6 +654,8 @@ webby
 Webcolor
 webcolors
 WG21
+WidgetUser
+WorkQueue
 'widen'
 x1
 x2
