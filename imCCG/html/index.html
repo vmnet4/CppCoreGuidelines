@@ -2505,6 +2505,12 @@ auto x = find_if(vr.begin(), vr.end(),
 <h2 id="anamesscallafcallparameterpassing"><a name="SS-call"></a>F.call: Parameter passing</h2>
 <p>There are a variety of ways to pass parameters to a function and to return values.</p>
 <h3 id="anamerfconventionalaf15prefersimpleandconventionalwaysofpassinginformation"><a name="Rf-conventional"></a>F.15: Prefer simple and conventional ways of passing information</h3>
+<table>
+<tr>
+<td><img src="imart/imMarker.png" alt="IMException" width="60"></td>
+<td><h4>IM Developpers!</h4>Our C++ convention partially overrides this for our custom types. See section "Interfaces et API" on this <a href="http://confluence.innovmetric.com/pages/viewpage.action?pageId=1475595#ConventiondeprogrammationC++-Rendrelesinterfacesexplicites" >confluence page.</a> </td>
+</tr>
+</table>
 <h5 id="reason-44">Reason</h5>
 <p>Using "unusual and clever" techniques causes surprises, slows understanding by other programmers, and encourages bugs.
 If you really feel the need for an optimization beyond the common techniques, measure to ensure that it really is an improvement, and document/comment because the improvement might not be portable.</p>
@@ -2519,6 +2525,12 @@ If you really feel the need for an optimization beyond the common techniques, me
 <p>To express shared ownership using <code>shared_ptr</code> types, rather than following guidelines F.16-21,
 follow <a href="#Rr-sharedptrparam-owner">R.34</a>, <a href="#Rr-sharedptrparam">R.35</a>, and <a href="#Rr-sharedptrparam-const">R.36</a>.</p>
 <h3 id="anamerfinaf16forinparameterspasscheaplycopiedtypesbyvalueandothersbyreferencetoconst"><a name="Rf-in"></a>F.16: For "in" parameters, pass cheaply-copied types by value and others by reference to <code>const</code></h3>
+<table>
+<tr>
+<td><img src="imart/imMarker.png" alt="IMException" width="60"></td>
+<td><h4>IM Developpers!</h4>Our C++ convention partially overrides this for our custom types. See section "Interfaces et API" on this <a href="http://confluence.innovmetric.com/pages/viewpage.action?pageId=1475595#ConventiondeprogrammationC++-Rendrelesinterfacesexplicites" >confluence page.</a> </td>
+</tr>
+</table>
 <h5 id="reason-45">Reason</h5>
 <p>Both let the caller know that a function will not modify the argument, and both allow initialization by rvalues.</p>
 <p>What is "cheap to copy" depends on the machine architecture, but two or three words (doubles, pointers, references) are usually best passed by value.

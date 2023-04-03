@@ -1,0 +1,24 @@
+001 - Ajout dans F.15
+Sous "<h3 id="anamerfconventionalaf15prefersimpleandconventionalwaysofpassinginformation"><a name="Rf-conventional"></a>F.15: Prefer simple and conventional ways of passing information</h3>"
+Ajouter
+"
+<table>
+<tr>
+<td><img src="imart/imMarker.png" alt="IMException" width="60"></td>
+<td><h4>IM Developpers!</h4>Our C++ convention partially overrides this for our custom types. See section "Interfaces et API" on this <a href="http://confluence.innovmetric.com/pages/viewpage.action?pageId=1475595#ConventiondeprogrammationC++-Rendrelesinterfacesexplicites" >confluence page.</a> </td>
+</tr>
+</table>
+"
+
+
+002 - Ajout dans F.16
+Sous "<h3 id="anamerfinaf16forinparameterspasscheaplycopiedtypesbyvalueandothersbyreferencetoconst"><a name="Rf-in"></a>F.16: For "in" parameters, pass cheaply-copied types by value and others by reference to <code>const</code></h3>"
+Ajouter
+"
+<table>
+<tr>
+<td><img src="imart/imMarker.png" alt="IMException" width="60"></td>
+<td><h4>IM Developpers!</h4>Our C++ convention partially overrides this for our custom types. See section "Interfaces et API" on this <a href="http://confluence.innovmetric.com/pages/viewpage.action?pageId=1475595#ConventiondeprogrammationC++-Rendrelesinterfacesexplicites" >confluence page.</a> </td>
+</tr>
+</table>
+"
