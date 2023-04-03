@@ -200,6 +200,7 @@ foobar
 Foobar
 FOOBAR
 fopen
+fprintf's
 fs
 func
 func1
@@ -286,6 +287,7 @@ Lakos
 Lakos96
 Lavavej
 LCSD05
+legacy_class
 lifecycle
 *life-time
 linearization
@@ -301,6 +303,8 @@ lvalues
 m1
 m2
 m3
+m_owning;
+m_observer;
 macros2
 malloc
 mallocfree
@@ -343,6 +347,7 @@ Murray93
 mutex
 mutexes
 mx
+My_vector
 MyCustomError
 MyException
 myMap
@@ -389,6 +394,7 @@ optimizable
 O'Reilly
 org
 ostream
+ostringstream
 overabstract
 overconstrain
 overconstrained
@@ -406,6 +412,7 @@ pb2
 pc
 performant
 pessimization
+picture1
 pimpl
 Pimpl
 Pirkelbauer
@@ -560,6 +567,7 @@ Stroustrup94
 Stroustrup's
 struct
 structs
+subobject
 subobjects
 suboperations
 subsetting
@@ -590,7 +598,7 @@ tmp
 TMP
 tock
 TODO
-toLower
+tolower
 toolchains
 TotallyOrdered
 TP
