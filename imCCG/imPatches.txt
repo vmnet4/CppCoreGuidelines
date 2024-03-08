@@ -5,7 +5,7 @@ Ajouter
 <table>
 <tr>
 <td><img src="imart/imMarker.png" alt="IMException" width="60"></td>
-<td><h4>IM Developpers!</h4>Our C++ convention partially overrides this for our custom types. See section "Interfaces et API" on this <a href="http://confluence.innovmetric.com/pages/viewpage.action?pageId=1475595#ConventiondeprogrammationC++-Rendrelesinterfacesexplicites" >confluence page.</a> </td>
+<td><h4>IM Developpers!</h4>Our C++ convention partially overrides this for our custom types. See section "Interfaces et API" on this <a href="https://innovmetric.atlassian.net/wiki/spaces/Architecture/pages/134905965/Convention+de+programmation+C#ConventiondeprogrammationC++-Rendrelesinterfacesexplicites" >confluence page.</a> </td>
 </tr>
 </table>
 "
@@ -18,7 +18,7 @@ Ajouter
 <table>
 <tr>
 <td><img src="imart/imMarker.png" alt="IMException" width="60"></td>
-<td><h4>IM Developpers!</h4>Our C++ convention partially overrides this for our custom types. See section "Interfaces et API" on this <a href="http://confluence.innovmetric.com/pages/viewpage.action?pageId=1475595#ConventiondeprogrammationC++-Rendrelesinterfacesexplicites" >confluence page.</a> </td>
+<td><h4>IM Developpers!</h4>Our C++ convention partially overrides this for our custom types. See section "Interfaces et API" on this <a href="https://innovmetric.atlassian.net/wiki/spaces/Architecture/pages/134905965/Convention+de+programmation+C#ConventiondeprogrammationC++-Rendrelesinterfacesexplicites" >confluence page.</a> </td>
 </tr>
 </table>
 "
