@@ -57,7 +57,7 @@ AUTOSAR
 b2
 BDE
 behaviorless
-BigPOD
+BigTrivial
 Bjarne
 blog
 Bloomberg
@@ -584,6 +584,7 @@ Sutter's
 SuttHysl04b
 sz
 T0
+t0
 Taligent94
 Taligent's
 TBD
@@ -671,6 +672,8 @@ x22
 xmax
 xor
 Xs
+y1
+y2
 years'
 yy
 Zhuang
