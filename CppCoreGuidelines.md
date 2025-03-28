@@ -1,6 +1,6 @@
 # <a name="main"></a>C++ Core Guidelines
 
-February 15, 2024
+Oct 3, 2024
 
 Editors:
 
@@ -10,7 +10,7 @@ Editors:
 This is a living document under continuous improvement.
 Had it been an open-source (code) project, this would have been release 0.8.
 Copying, use, modification, and creation of derivative works from this project is licensed under an MIT-style license.
-Contributing to this project requires agreeing to a Contributor License. See the accompanying [LICENSE](LICENSE) file for details.
+Contributing to this project requires agreeing to a Contributor License. See the accompanying [LICENSE](https://github.com/isocpp/CppCoreGuidelines/blob/master/LICENSE) file for details.
 We make this project available to "friendly users" to use, copy, modify, and derive from, hoping for constructive input.
 
 Comments and suggestions for improvements are most welcome.
@@ -1123,7 +1123,7 @@ Messy, low-level code breeds more such code.
     }
 
 This is low-level, verbose, and error-prone.
-For example, we "forgot" to test for memory exhaustion.
+For example, we "forgot" to test for memory exhaustion and assign new value to `sz`.
 Instead, we could use `vector`:
 
     vector<int> v;
@@ -1165,9 +1165,9 @@ Run a static analyzer to verify that your code follows the guidelines you want i
 
 See
 
-* [Static analysis tools](???)
+* [Static analysis tools](https://en.wikipedia.org/wiki/List_of_tools_for_static_code_analysis)
 * [Concurrency tools](#Rconc-tools)
-* [Testing tools](???)
+* [Testing tools](https://github.com/isocpp/CppCoreGuidelines/tree/master)
 
 There are many other kinds of tools, such as source code repositories, build tools, etc.,
 but those are beyond the scope of these guidelines.
@@ -2679,9 +2679,9 @@ Member functions defined in-class are `inline` by default.
 
 Function templates (including member functions of class templates `A<T>::function()` and member function templates `A::function<T>()`) are normally defined in headers and therefore inline.
 
-##### Enforcement
+##### Note
 
-Flag `inline` functions that are more than three statements and could have been declared out of line (such as class member functions).
+Consider making functions out of line if they are more than three statements and can be declared out of line (such as class member functions).
 
 ### <a name="Rf-noexcept"></a>F.6: If your function must not throw, declare it `noexcept`
 
@@ -3007,7 +3007,8 @@ When copying is cheap, nothing beats the simplicity and safety of copying, and f
 For advanced uses (only), where you really need to optimize for rvalues passed to "input-only" parameters:
 
 * If the function is going to unconditionally move from the argument, take it by `&&`. See [F.18](#Rf-consume).
-* If the function is going to keep a copy of the argument, in addition to passing by `const&` (for lvalues),
+* If the function is going to keep a locally modifiable copy of the argument only for its own local use, taking it by value is fine
+* If the function is going to keep a copy of the argument to pass to another destination (to another function, or store in a non-local location), in addition to passing by `const&` (for lvalues),
   add an overload that passes the parameter by `&&` (for rvalues) and in the body `std::move`s it to its destination. Essentially this overloads a "will-move-from"; see [F.18](#Rf-consume).
 * In special cases, such as multiple "input + copy" parameters, consider using perfect forwarding. See [F.19](#Rf-forward).
 
@@ -3663,7 +3664,7 @@ Importantly, that does not imply a transfer of ownership of the pointed-to objec
 ##### Note
 
 Positions can also be transferred by iterators, indices, and references.
-A reference is often a superior alternative to a pointer [if there is no need to use `nullptr`](#Rf-ptr-ref) or [if the object referred to should not change](???).
+A reference is often a superior alternative to a pointer [if there is no need to use `nullptr`](#Rf-ptr-ref) or [if the object referred to should not change](#S-const).
 
 ##### Note
 
@@ -3932,11 +3933,13 @@ value) of any assignment operator.
 
 ##### Reason
 
-With guaranteed copy elision, it is now almost always a pessimization to expressly use `std::move` in a return statement.
+Returning a local variable implicitly moves it anyway.
+An explicit `std::move` is always a pessimization, because it prevents Return Value Optimization (RVO),
+which can eliminate the move completely.
 
 ##### Example, bad
 
-    S f()
+    S bad()
     {
       S result;
       return std::move(result);
@@ -3944,9 +3947,10 @@ With guaranteed copy elision, it is now almost always a pessimization to express
 
 ##### Example, good
 
-    S f()
+    S good()
     {
       S result;
+      // Named RVO: move elision at best, move construction at worst
       return result;
     }
 
@@ -4148,8 +4152,6 @@ It's confusing. Writing `[=]` in a member function appears to capture by value, 
             // ...
 
             auto lambda = [=] { use(i, x); };   // BAD: "looks like" copy/value capture
-            // [&] has identical semantics and copies the this pointer under the current rules
-            // [=,this] and [&,this] are not much better, and confusing
 
             x = 42;
             lambda(); // calls use(0, 42);
@@ -4876,13 +4878,16 @@ It's the simplest and gives the cleanest semantics.
 
     struct Named_map {
     public:
-        // ... no default operations declared ...
+        explicit Named_map(const string& n) : name(n) {}
+        // no copy/move constructors
+        // no copy/move assignment operators
+        // no destructor
     private:
         string name;
         map<int, int> rep;
     };
 
-    Named_map nm;        // default construct
+    Named_map nm("map"); // construct
     Named_map nm2 {nm};  // copy construct
 
 Since `std::map` and `string` have all the special functions, no further work is needed.
@@ -5093,10 +5098,6 @@ There are two general categories of classes that need a user-defined destructor:
     };
 
 The default destructor does it better, more efficiently, and can't get it wrong.
-
-##### Note
-
-If the default destructor is needed, but its generation has been suppressed (e.g., by defining a move constructor), use `=default`.
 
 ##### Enforcement
 
@@ -6596,7 +6597,7 @@ Writing out the bodies of the copy and move operations is verbose, tedious, and 
 
 ##### Enforcement
 
-(Moderate) The body of a special operation should not have the same accessibility and semantics as the compiler-generated version, because that would be redundant
+(Moderate) The body of a user-defined operation should not have the same semantics as the compiler-generated version, because that would be redundant.
 
 ### <a name="Rc-delete"></a>C.81: Use `=delete` when you want to disable default behavior (without wanting an alternative)
 
@@ -8027,11 +8028,6 @@ Capping a hierarchy with `final` classes is rarely needed for logical reasons an
 Not every class is meant to be a base class.
 Most standard-library classes are examples of that (e.g., `std::vector` and `std::string` are not designed to be derived from).
 This rule is about using `final` on classes with virtual functions meant to be interfaces for a class hierarchy.
-
-##### Note
-
-Capping an individual virtual function with `final` is error-prone as `final` can easily be overlooked when defining/overriding a set of functions.
-Fortunately, the compiler catches such mistakes: You cannot re-declare/re-open a `final` member in a derived class.
 
 ##### Note
 
@@ -9539,7 +9535,7 @@ Returning a (raw) pointer imposes a lifetime management uncertainty on the calle
         delete p;
     }
 
-In addition to suffering from the problem from [leak](#???), this adds a spurious allocation and deallocation operation, and is needlessly verbose. If Gadget is cheap to move out of a function (i.e., is small or has an efficient move operation), just return it "by value" (see ["out" return values](#Rf-out)):
+In addition to suffering from the problem of [leak](#Rp-leak), this adds a spurious allocation and deallocation operation, and is needlessly verbose. If Gadget is cheap to move out of a function (i.e., is small or has an efficient move operation), just return it "by value" (see ["out" return values](#Rf-out)):
 
     Gadget make_gadget(int n)
     {
@@ -9621,24 +9617,7 @@ Exception: Do not produce such a warning on a local `Unique_pointer` to an unbou
 
 ##### Exception
 
-It is OK to create a local `const unique_ptr<T[]>` to a heap-allocated buffer, as this is a valid way to represent a scoped dynamic array.
-
-##### Example
-
-A valid use case for a local `const unique_ptr<T[]>` variable:
-
-    int get_median_value(const std::list<int>& integers)
-    {
-      const auto size = integers.size();
-
-      // OK: declaring a local unique_ptr<T[]>.
-      const auto local_buffer = std::make_unique_for_overwrite<int[]>(size);
-
-      std::copy_n(begin(integers), size, local_buffer.get());
-      std::nth_element(local_buffer.get(), local_buffer.get() + size/2, local_buffer.get() + size);
-
-      return local_buffer[size/2];
-    }
+If your stack space is limited, it is OK to create a local `const unique_ptr<BigObject>` to store the object on the heap instead of the stack.
 
 ### <a name="Rr-global"></a>R.6: Avoid non-`const` global variables
 
@@ -9878,7 +9857,7 @@ This is more efficient:
 
 ##### Enforcement
 
-(Simple) Warn if a function uses a `Shared_pointer` with an object allocated within the function, but never returns the `Shared_pointer` or passes it to a function requiring a `Shared_pointer&`. Suggest using `unique_ptr` instead.
+(Simple) Warn if a function uses a `Shared_pointer` with an object allocated within the function, but never returns the `Shared_pointer` or passes it to a function requiring a `Shared_pointer`. Suggest using `unique_ptr` instead.
 
 ### <a name="Rr-make_shared"></a>R.22: Use `make_shared()` to make `shared_ptr`s
 
@@ -9886,6 +9865,7 @@ This is more efficient:
 
 `make_shared` gives a more concise statement of the construction.
 It also gives an opportunity to eliminate a separate allocation for the reference counts, by placing the `shared_ptr`'s use counts next to its object.
+It also ensures exception safety in complex expressions (in pre-C++17 code).
 
 ##### Example
 
@@ -9905,7 +9885,7 @@ The `make_shared()` version mentions `X` only once, so it is usually shorter (as
 ##### Reason
 
 `make_unique` gives a more concise statement of the construction.
-It also ensures exception safety in complex expressions.
+It also ensures exception safety in complex expressions (in pre-C++17 code).
 
 ##### Example
 
@@ -10013,14 +9993,9 @@ Using `unique_ptr` in this way both documents and enforces the function call's o
 
     void uses(widget*);            // just uses the widget
 
-##### Example, bad
-
-    void thinko(const unique_ptr<widget>&); // usually not what you want
-
 ##### Enforcement
 
 * (Simple) Warn if a function takes a `Unique_pointer<T>` parameter by lvalue reference and does not either assign to it or call `reset()` on it on at least one code path. Suggest taking a `T*` or `T&` instead.
-* (Simple) ((Foundation)) Warn if a function takes a `Unique_pointer<T>` parameter by reference to `const`. Suggest taking a `const T*` or `const T&` instead.
 
 ### <a name="Rr-reseat"></a>R.33: Take a `unique_ptr<widget>&` parameter to express that a function reseats the `widget`
 
@@ -10036,14 +10011,9 @@ Using `unique_ptr` in this way both documents and enforces the function call's r
 
     void reseat(unique_ptr<widget>&); // "will" or "might" reseat pointer
 
-##### Example, bad
-
-    void thinko(const unique_ptr<widget>&); // usually not what you want
-
 ##### Enforcement
 
 * (Simple) Warn if a function takes a `Unique_pointer<T>` parameter by lvalue reference and does not either assign to it or call `reset()` on it on at least one code path. Suggest taking a `T*` or `T&` instead.
-* (Simple) ((Foundation)) Warn if a function takes a `Unique_pointer<T>` parameter by reference to `const`. Suggest taking a `const T*` or `const T&` instead.
 
 ### <a name="Rr-sharedptrparam-owner"></a>R.34: Take a `shared_ptr<widget>` parameter to express shared ownership
 
@@ -12677,6 +12647,10 @@ Flag the C-style `(T)e` and functional-style `T(e)` casts.
 
 Dereferencing an invalid pointer, such as `nullptr`, is undefined behavior, typically leading to immediate crashes,
 wrong results, or memory corruption.
+
+##### Note
+
+By pointer here we mean any indirection to an object, including equivalently an iterator or view.
 
 ##### Note
 
@@ -16360,7 +16334,7 @@ The standard library assumes that destructors, deallocation functions (e.g., `op
 * `swap` functions must be `noexcept`.
 * Most destructors are implicitly `noexcept` by default.
 * Also, [make move operations `noexcept`](#Rc-move-noexcept).
-* If writing a type intended to be used as an exception type, ensure its copy constructor is not `noexcept`. In general we cannot mechanically enforce this, because we do not know whether a type is intended to be used as an exception type.
+* If writing a type intended to be used as an exception type, ensure its copy constructor is `noexcept`. In general we cannot mechanically enforce this, because we do not know whether a type is intended to be used as an exception type.
 * Try not to `throw` a type whose copy constructor is not `noexcept`. In general we cannot mechanically enforce this, because even `throw std::string(...)` could throw but does not in practice.
 
 ##### Enforcement
@@ -20577,7 +20551,7 @@ The positive arguments for alternatives to these non-rules are listed in the rul
 Non-rule summary:
 
 * [NR.1: Don't insist that all declarations should be at the top of a function](#Rnr-top)
-* [NR.2: Don't insist to have only a single `return`-statement in a function](#Rnr-single-return)
+* [NR.2: Don't insist on having only a single `return`-statement in a function](#Rnr-single-return)
 * [NR.3: Don't avoid exceptions](#Rnr-no-exceptions)
 * [NR.4: Don't insist on placing each class definition in its own source file](#Rnr-lots-of-files)
 * [NR.5: Don't use two-phase initialization](#Rnr-two-phase-init)
@@ -20623,7 +20597,7 @@ Unfortunately, compilers cannot catch all such errors and unfortunately, the bug
 * [Always initialize an object](#Res-always)
 * [ES.21: Don't introduce a variable (or constant) before you need to use it](#Res-introduce)
 
-### <a name="Rnr-single-return"></a>NR.2: Don't insist to have only a single `return`-statement in a function
+### <a name="Rnr-single-return"></a>NR.2: Don't insist on having only a single `return`-statement in a function
 
 ##### Reason
 
@@ -20993,7 +20967,7 @@ Reference sections:
   Libraries used have to have been approved for mission critical applications.
   Any similarities to this set of guidelines are unsurprising because Bjarne Stroustrup was an author of JSF++.
   Recommended, but note its very specific focus.
-* [MISRA C++ 2008: Guidelines for the use of the C++ language in critical systems](https://www.misra.org.uk/Buyonline/tabid/58/Default.aspx).
+* [MISRA C++:2023 Guidelines for the use C++17 in critical systems](https://misra.org.uk/product/misra-cpp2023/).
 * [Using C++ in Mozilla Code](https://firefox-source-docs.mozilla.org/code-quality/coding-style/using_cxx_in_firefox_code.html).
   As the name indicates, this aims for portability across many (old) compilers.
   As such, it is restrictive.
@@ -21352,7 +21326,7 @@ Use `not_null<zstring>` for C-style strings that cannot be `nullptr`. ??? Do we 
 * `unique_ptr<T>`     // unique ownership: `std::unique_ptr<T>`
 * `shared_ptr<T>`     // shared ownership: `std::shared_ptr<T>` (a counted pointer)
 * `stack_array<T>`    // A stack-allocated array. The number of elements is determined at construction and fixed thereafter. The elements are mutable unless `T` is a `const` type.
-* `dyn_array<T>`      // ??? needed ??? A heap-allocated array. The number of elements is determined at construction and fixed thereafter.
+* `dyn_array<T>`      // A container, non-growing dynamically allocated array. The number of elements is determined at construction and fixed thereafter.
   The elements are mutable unless `T` is a `const` type. Basically a `span` that allocates and owns its elements.
 
 ## <a name="SS-assertions"></a>GSL.assert: Assertions
@@ -22188,7 +22162,8 @@ No. `stack_array` is guaranteed to be allocated on the stack. Although a `std::a
 
 ### <a name="Faq-gsl-dyn-array"></a>FAQ.58: Is `dyn_array` the same as `vector` or the proposed `dynarray`?
 
-No. `dyn_array` is not resizable, and is a safe way to refer to a heap-allocated fixed-size array. Unlike `vector`, it is intended to replace array-`new[]`. Unlike the `dynarray` that has been proposed in the committee, this does not anticipate compiler/language magic to somehow allocate it on the stack when it is a member of an object that is allocated on the stack; it simply refers to a "dynamic" or heap-based array.
+No. `dyn_array` is a container, like `vector`, but it is not resizable; its size is fixed at runtime when it is constructed.
+It is a safe way to refer to a dynamically "heap"-allocated fixed-size array. Unlike `vector`, it is intended to replace array-`new[]`. Unlike the `dynarray` that has been proposed in the committee, this does not anticipate compiler/language magic to somehow allocate it on the stack when it is a member of an object that is allocated on the stack; it simply refers to a "dynamic" or heap-based array.
 
 ### <a name="Faq-gsl-expects"></a>FAQ.59: Is `Expects` the same as `assert`?
 
@@ -22642,7 +22617,7 @@ Prevent leaks. Leaks can lead to performance degradation, mysterious error, syst
         // ...
     };
 
-This class is a resource handle. It manages the lifetime of the `T`s. To do so, `Vector` must define or delete [the set of special operations](???) (constructors, a destructor, etc.).
+This class is a resource handle. It manages the lifetime of the `T`s. To do so, `Vector` must define or delete [the copy, move, and destruction operations](#Rc-five).
 
 ##### Example
 
@@ -22789,7 +22764,7 @@ To provide complete control of the lifetime of the resource. To provide a cohere
 
 ##### Note
 
-If all members are resource handles, rely on the default special operations where possible.
+If all members are resource handles, rely on the compiler-generated operations where possible.
 
     template<typename T> struct Named {
         string name;
